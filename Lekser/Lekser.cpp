@@ -48,11 +48,11 @@ namespace C0Compiler
 		char procitan = citaj();
 		if (znak == procitan) return znak;
 
-		std::string opis = "neocekivan znak ";
+		std::string opis = "neocekivan znak '";
 		opis += procitan;
-		opis += ", ocekujem ";
+		opis += "', ocekujem '";
 		opis += znak;
-		opis += '.';
+		opis += "'.";
 		lexGreska(opis);
 		exit(1);
 	}
@@ -77,6 +77,8 @@ namespace C0Compiler
 		}
 		else
 		{
+			// 12.12.2018. možda bi dobro bilo imati apstraktnu klasu greška, derivirati sve greške iz nje
+			// i ovaj gadni dio s printanjem i čišćenjem riješiti u nekoj virtualnoj metodi
 			std::cerr << "Greska! Nije moguce vratiti glavu vise od jednog mjesta unazad!" << std::endl;
 			pocisti();
 			exit(1); 
@@ -98,7 +100,7 @@ namespace C0Compiler
 		exit(1);
 	}
 
-	int Lekser::kleeneZvijezda(std::function<bool(char)> const& uvjet)
+	int Lekser::kleeneZvijezda(std::function<bool(char)> && uvjet)
 	{
 		char znak;
 		int procitani = 0;
@@ -117,7 +119,10 @@ namespace C0Compiler
 	{
 		char znak, sljedeci;
 		bool citamString = false;
-
+		bool citamKomentar = false;
+		
+		tokeniziraj(POCETAK);	// označi početak datoteke. kad ga ne bi bilo, prvi citaj() u parseru bi preskočio prvi token.
+								// ovako preskoči POCETAK, koji ionako ne služi ničemu osim da ga se preskoči
 		while (znak = citaj())
 		{
 			if (citamString)
@@ -129,17 +134,23 @@ namespace C0Compiler
 					{
 						lexGreska("neispravan string");
 					}
-
-
 				}
 				else if (isprint(znak) && znak != '"')
 					continue;
 
 				else
 				{
-					procitaj('"');
-					citamString = false;
+					if(znak == '"')
+						citamString = false;
 					tokeniziraj(STRLIT);
+				}
+			}
+			else if (citamKomentar)
+			{
+				if (znak == '*' && probajProcitati('/'))
+				{
+					citamKomentar = false;
+					sadrzaj.clear();
 				}
 			}
 			else if (isspace(znak))
@@ -149,6 +160,14 @@ namespace C0Compiler
 			{
 				citamString = true;
 				continue;
+			}
+
+			else if (znak == '#')
+			{
+				procitaj('u');
+				procitaj('s');
+				procitaj('e');
+				tokeniziraj(USE);
 			}
 
 			else if (isalpha(znak) || znak == '_')
@@ -339,25 +358,13 @@ namespace C0Compiler
 					tokeniziraj(SLASHEQ);
 				else if (probajProcitati('/'))
 				{
-					kleeneZvijezda([](char znak) {return znak != '\n'; }); // može ovo i urednije, samo trebam smisliti lijepo ime za funkciju
+					kleeneZvijezda([](char znak) {return znak != '\n'; }); 
 					procitaj('\n');
-					sadrzaj.clear();
-					//tokeniziraj(COMMENT);
+					sadrzaj.clear(); // sjetimo se PROG1: "compiler ignorira komentare". kad bih ih stvarno tokenizirao, samo bih otvorio vrata gomili false positive sintaksnih grešaka
 				}
 				else if (probajProcitati('*'))
-				{
-					do
-					{
-						do
-						{
-							sljedeci = citaj();
-						} 
-						while (sljedeci != '*');
-					}
-					while(!probajProcitati('/'));
-					//tokeniziraj(COMMENT);
-					sadrzaj.clear(); // sjetimo se PROG1: "compiler ignorira komentare". kad bih ih stvarno leksirao, samo bih otvorio vrata gomili false positive sintaksnih grešaka
-				}
+					citamKomentar = true;
+					
 				else
 					tokeniziraj(SLASH);
 			}
@@ -451,7 +458,15 @@ namespace C0Compiler
 
 			else if (znak == ':')
 				tokeniziraj(DTOCKA);
+
+			// ako nemaš pojma što si pročitao...
+			else
+			{
+				lexGreska("Nepoznat znak " + znak);
+			}
 		} // while
+		if (citamKomentar)
+			lexGreska("Nezatvoren komentar");
 
 		return m_tokeni;
 	} // leksiraj
