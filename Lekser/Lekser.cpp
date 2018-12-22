@@ -27,7 +27,7 @@ namespace C0Compiler
 	char Lekser::citaj()
 	{
 		// ako glava ne može dalje...
-		if (glava + 1 >= linija.size())
+		if (stupac + 1 >= linija.size())
 		{
 			if (std::getline(*m_code, linija))
 			{
@@ -37,10 +37,9 @@ namespace C0Compiler
 			}
 		}
 		++stupac;
-		++glava;
-		sadrzaj += linija[glava];
+		sadrzaj += linija[stupac];
 		vracanje_ok = true;
-		return linija[glava];
+		return linija[stupac];
 	}
 
 	char Lekser::procitaj(char znak)
@@ -72,7 +71,6 @@ namespace C0Compiler
 		{
 			vracanje_ok = false;
 			--stupac;
-			--glava;
 			sadrzaj.pop_back();
 		}
 		else
@@ -129,18 +127,20 @@ namespace C0Compiler
 			{
 				if (znak == '\\')
 				{
+					// ako si pročitao '\', pogledaj je li sljedeći escape znak
 					sljedeci = citaj();
 					if (escapeZnakovi.find(sljedeci) == escapeZnakovi.end())
-					{
+						// ako nije, imamo problem
 						lexGreska("neispravan string");
-					}
 				}
 				else if (isprint(znak) && znak != '"')
+					// ako si pročitao znak i taj znak nije '"', još si u stringu
 					continue;
 
 				else
 				{
 					if(znak == '"')
+						// ako si pročitao '"', došao si do kraja stringa
 						citamString = false;
 					tokeniziraj(STRLIT);
 				}
@@ -149,6 +149,7 @@ namespace C0Compiler
 			{
 				if (znak == '*' && probajProcitati('/'))
 				{
+					// ako si u komentaru i pročitao si "*/", onda si došao dok kraja komentara
 					citamKomentar = false;
 					sadrzaj.clear();
 				}
@@ -158,12 +159,14 @@ namespace C0Compiler
 
 			else if (znak == '"')
 			{
+				// ako si pročitao '"', našao si početak stringa
 				citamString = true;
 				continue;
 			}
 
-			else if (znak == '#')
+			else if (znak == '#') 
 			{
+				// poslije '#' ide samo "use", inače imamo grešku
 				procitaj('u');
 				procitaj('s');
 				procitaj('e');
@@ -172,8 +175,11 @@ namespace C0Compiler
 
 			else if (isalpha(znak) || znak == '_')
 			{
-				// onda je jedan od identifiera
+				// ako si pročitao slovo ili '_', onda si našao identifier
+				// svako sljedeće slovo ili broj pripada istom tom identifieru
 				kleeneZvijezda([](char znak){ return isalnum(znak) || znak == '_'; });
+
+				// ovisno o tome što si pročitao, tokeniziraj
 				if (sadrzaj == "true" || sadrzaj == "false") tokeniziraj(BOOLEAN);
 				else if (sadrzaj == "NULL") tokeniziraj(NUL);
 				else if (sadrzaj == "if") tokeniziraj(IF);
@@ -189,19 +195,23 @@ namespace C0Compiler
 				else if (sadrzaj == "alloc_array") tokeniziraj(ALLOCA);
 				else if (sadrzaj == "int")
 				{
+					// ako si pročitao int, možda je poslije njega '*'
 					if (probajProcitati('*'))
 						tokeniziraj(POINTER);
 
+					// ako nije, možda je "[]"
 					else if (probajProcitati('['))
 					{
 						procitaj(']');
 						tokeniziraj(ARRAY);
 					}
 					else
+						// ako nije ništa od toga, imaš obični int
 						tokeniziraj(INT);
 				}
 				else if (sadrzaj == "bool")
 				{
+					// vidi komentare za int, sasvim je analogno
 					if (probajProcitati('*'))
 						tokeniziraj(POINTER);
 
@@ -215,6 +225,7 @@ namespace C0Compiler
 				}
 				else if (sadrzaj == "char")
 				{
+					// vidi komentare za int, sasvim je analogno
 					if (probajProcitati('*'))
 						tokeniziraj(POINTER);
 
@@ -228,6 +239,7 @@ namespace C0Compiler
 				}
 				else if (sadrzaj == "string")
 				{
+					// vidi komentare za int, sasvim je analogno
 					if (probajProcitati('*'))
 						tokeniziraj(POINTER);
 
@@ -240,6 +252,7 @@ namespace C0Compiler
 				}
 				else if (sadrzaj == "void")
 				{
+					// vidi komentare za int, sasvim je analogno
 					if (probajProcitati('*'))
 						tokeniziraj(POINTER);
 
@@ -254,13 +267,13 @@ namespace C0Compiler
 			}
 			else if (isdigit(znak))
 			{
-				// onda je broj u decimalnom ili heksadekadskom zapisu
+				// ako si pročitao znamenku, onda si našao broj
 				if (znak == '0')
 				{
 					sljedeci = citaj();
+					// ako je poslije nule x, onda je broj u heksadekadskom zapisu
 					if (sljedeci == 'x' || sljedeci == 'X')
 					{
-						// onda je heksadekadski
 						sljedeci = citaj();
 						if (isxdigit(sljedeci))
 						{
@@ -278,14 +291,16 @@ namespace C0Compiler
 					}
 					else
 					{
+						// ako je samo nula, odlično, to je broj u dekadskom zapisu
 						vrati();
-						tokeniziraj(DECIMALNI);
+						tokeniziraj(DEKADSKI);
 					}
 				}
 				else
 				{
+					// ako je znamenka, a nije nula, imaš broj u dekadskom zapisu
 					kleeneZvijezda(isdigit);
-					tokeniziraj(DECIMALNI);
+					tokeniziraj(DEKADSKI);
 				}
 			}
 			else if (znak == '\'')
@@ -293,6 +308,7 @@ namespace C0Compiler
 				sljedeci = citaj();
 				if (!isprint(sljedeci) && escapeSekvence.find(sljedeci) != escapeSekvence.end() && sljedeci != '\0')
 				{
+					// ako si pročitao ', a u njemu nije znak ili escape sekvenca, imaš bezvezni char literal
 					lexGreska("neispravan char literal");
 				}
 				else
@@ -301,7 +317,7 @@ namespace C0Compiler
 					tokeniziraj(CHRLIT);
 				}
 			}
-			// je li jedan od separatora?
+			// jesi li našao neki od separatora?
 			else if (znak == '(')
 				tokeniziraj(OOTV);
 			else if (znak == ')')
@@ -319,7 +335,7 @@ namespace C0Compiler
 			else if (znak == ';')
 				tokeniziraj(TZAREZ);
 
-			// je li operator?
+			// jesi li našao operator?
 			else if (znak == '!')
 			{
 				if (probajProcitati('='))
@@ -358,11 +374,14 @@ namespace C0Compiler
 					tokeniziraj(SLASHEQ);
 				else if (probajProcitati('/'))
 				{
+					// ako si pročitao "//", sve do kraja reda je komentar
 					kleeneZvijezda([](char znak) {return znak != '\n'; }); 
 					procitaj('\n');
 					sadrzaj.clear(); // sjetimo se PROG1: "compiler ignorira komentare". kad bih ih stvarno tokenizirao, samo bih otvorio vrata gomili false positive sintaksnih grešaka
 				}
 				else if (probajProcitati('*'))
+					// ako si pročitao "/*", onda si u blok komentaru, prebaci se u "komentar mod"
+					// i sve što pročitaš šibaj u taj komentar
 					citamKomentar = true;
 					
 				else
@@ -468,6 +487,7 @@ namespace C0Compiler
 		if (citamKomentar)
 			lexGreska("Nezatvoren komentar");
 
+		tokeniziraj(KRAJ);
 		return m_tokeni;
 	} // leksiraj
 

@@ -13,7 +13,6 @@
 // VZATV		|		}		|	
 // ZAREZ		|		,		|	
 // TZAREZ		|		:		|	
-// HASH			|		#		|
 // USKL			|		!		|	
 // TILDA		|		~		|	
 // MINUS		|		-		|	
@@ -56,7 +55,7 @@
 // QUOTE		|		'		|
 // DQUOTE		|		"		|
 // BSLASH		|		\		|
-// COMMENT		|				|	sve između // i \n ili /* i */
+// COMMENT		|				|	sve između /* i */
 // IF			|		if		|
 // ELSE			|	   else		|
 // WHILE		|	   while	|
@@ -66,7 +65,7 @@
 // ALLOC		|	   alloc	|
 // ALLOCA		|	alloc_array	|
 // IDENTIFIER	|				|	identifier varijable, funkcije itd.
-// DECIMALNI	|				|	broj u decimalnom zapisu
+// DEKADSKI		|				|	broj u dekadskom zapisu
 // HEKSADEKADSKI|				|	broj u heksadekadskom zapisu
 // CHRLIT		|				|	char literal
 // STRLIT		|				|	string literal
@@ -80,18 +79,22 @@
 // CHAR			|	   char		|
 // STRING		|	  string	|
 // VOID			|	   void		|
-// POINTER		|				|	pointer
-// ARRAY		|				|	array
+// POINTER		|				|	pointer		->21.12.2018. premišljam se da umjesto pointer i array imam token za
+// ARRAY		|				|	array		->			svaki mogući tip arraya i tokena
+// USE			|	   #use		|
 // PRAZNO		|				|	znak ' '
+// POCETAK		|				|	pocetak datoteke
+// KRAJ			|				|	kraj datoteke
 
 #include <string>
+#include <map>
 
 namespace C0Compiler
 {
 	enum TokenTip
 	{
 		// separatori
-		OOTV, OZATV, UOTV, UZATV, VOTV, VZATV, ZAREZ, TZAREZ, HASH,
+		OOTV, OZATV, UOTV, UZATV, VOTV, VZATV, ZAREZ, TZAREZ, 
 
 		// unarni operatori
 		USKL, TILDA, MINUS, ZVJ,
@@ -111,16 +114,18 @@ namespace C0Compiler
 		BACKSP, ALERT, QUOTE, DQUOTE, BSLASH,
 
 		// komentari
-		COMMENT, COMBEGIN, COMEND,
+		COMMENT,
 
 		// statementi
 		IF, ELSE, WHILE, FOR, ASSERT, ERROR,
 
 		// razno
-		ALLOC, ALLOCA, IDENTIFIER, DECIMALNI, HEKSADEKADSKI, CHRLIT, STRLIT, BOOLEAN,
+		ALLOC, ALLOCA, IDENTIFIER, DEKADSKI, HEKSADEKADSKI, CHRLIT, STRLIT, BOOLEAN,
 		NUL, BREAK, CONTINUE, RETURN, INT, BOOL, CHAR, STRING, VOID, POINTER, ARRAY, 
-		PRAZNO
+		USE, PRAZNO, POCETAK, KRAJ
 	};
+
+	std::map<TokenTip, std::string> tokenString;
 
 	// Općenita klasa za token
 	class Token
@@ -130,14 +135,22 @@ namespace C0Compiler
 			std::string m_sadrzaj;
 			int m_redak;
 			int m_stupac;
+
 		public:
 			Token(TokenTip tip, std::string const& sadrzaj, int redak, int stupac) : m_tip(tip), m_sadrzaj(sadrzaj), m_redak(redak), m_stupac(stupac) {}
+			
+			TokenTip getTip() { return m_tip; }
+			int getRedak() { return m_redak; }
+			int getStupac() { return m_stupac; }
+
+			std::string const& getSadrzaj() { return m_sadrzaj; }
+			bool isOfType(TokenTip tip) { return m_tip == tip; }
+			bool isOfType(Token const& token) { return m_tip == token.m_tip; }
+
 			friend std::ostream& operator<<(std::ostream& out, Token const&);
 	};
 	// kad se pokaže potreba (a mogla bi), ovdje ću vjerojatno napraviti da 'razno' tokeni
 	// nasljeđuju od općeg tokena i imaju svoje metode
-
-	
 }
 
 #endif

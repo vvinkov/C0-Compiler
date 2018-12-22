@@ -21,15 +21,13 @@ namespace C0Compiler
 			bool vracanje_ok;											// flag, dozvoljavamo li vraćanje glave za čitanje nazad
 			int redak;													// redni broj retka u kojem se glava za čitanje nalazi
 			int stupac;													// redni broj stupca u kojem se glava za čitanje nalazi
-			int glava;													// mjesto u liniji na kojem se nalazi glava za čitanje
 
 			static std::set<char> escapeZnakovi;
 			static std::set<char> escapeSekvence;
 
-			void carriageReturn() { glava = -1; stupac = -1; }			// vrati glavu za čitanje na početak linije
+			void carriageReturn() { stupac = -1; }						// vrati glavu za čitanje na početak linije
 
 		protected:
-			
 			char citaj();												// čitaj sljedeći znak iz input datoteke
 			char procitaj(char znak);									// čitaj sljedeći znak iz input datoteke ako je jednak 'znak'-u, inače vrati grešku
 			bool probajProcitati(char znak);							// čitaj sljedeći znak iz input datoteke ako je jednak 'znak'-u i vrati true, inače vrati false
@@ -40,9 +38,9 @@ namespace C0Compiler
 
 		public:
 			void pocisti();												// počisti alociranu memoriju
-
-			Lekser(std::ifstream* code);
-			std::deque<Token*> leksiraj();
+			Lekser() = delete;
+			Lekser(std::ifstream* code);								// uzmi kod napisan u C0 i napravi tokene iz njega
+			std::deque<Token*> leksiraj();								// konstruiraj tokene od source-a
 	};
 }
 
