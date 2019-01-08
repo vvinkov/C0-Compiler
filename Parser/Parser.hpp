@@ -22,8 +22,10 @@ namespace C0Compiler
 			void pocisti();									// počisti memoriju alociranu za tokene, AST i "zadnji"
 			
 			AST* parseUse();								// parsiraj #use direktivu
-			AST* parseFunction();								// parsiraj funkciju (deklaraciju ili definiciju)
+			AST* parseFunction();							// parsiraj funkciju (deklaraciju ili definiciju)
 			AST* parseStatement();
+			AST* parseExpression();
+			AST* parseSimple();
 
 		protected:
 			Token& citaj();									// čitaj sljedeći token

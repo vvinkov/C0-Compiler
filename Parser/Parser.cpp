@@ -165,7 +165,117 @@ namespace C0Compiler
 
 	AST* Parser::parseStatement()
 	{
+		Token zadnji = citaj();
+		switch(zadnji.getTip())
+		{
+			case IF:
+			{
+				procitaj(OOTV);
+				AST* uvjet = parseExpression();
+				procitaj(OZATV);
+				AST* tijeloIf = parseStatement();
+			
+				if (sljedeci(ELSE))
+				{
+					procitaj(ELSE);
+					AST* tijeloElse = parseStatement();
+					return new IfElse({ uvjet, tijeloIf, tijeloElse });
+				}
+				else
+					return new If({ uvjet, tijeloIf });
+			}
 
+			case WHILE:
+			{
+				procitaj(OOTV);
+				AST* uvjet = parseExpression();
+				procitaj(OZATV);
+				AST* tijelo = parseStatement();
+				return new While({uvjet, tijelo});
+			}
+
+			case FOR:
+			{
+				procitaj(OOTV);
+				AST* deklaracija;
+				AST* uvjet;
+				AST* inkrement;
+				if(!sljedeci(TZAREZ))
+					deklaracija = parseSimple();
+
+				procitaj(TZAREZ);
+				if(!sljedeci(TZAREZ))
+					uvjet = parseExpression();
+
+				procitaj(TZAREZ);
+				if(!sljedeci(TZAREZ))
+					uvjet = parseSimple();
+
+				procitaj(OZATV);
+				AST* tijelo = parseStatement();
+				return new For({deklaracija, uvjet, inkrement, tijelo});
+			}
+
+			case RETURN:
+			{
+				AST* povratnaVrijednost;
+				if(!sljedeci(TZAREZ))
+					povratnaVrijednost = parseExpression();
+
+				procitaj(TZAREZ);
+				return new Return({povratnaVrijednost});
+			}
+
+			case BREAK:
+			{
+				procitaj(TZAREZ);
+				return new Break;
+			}
+
+			case CONTINUE:
+			{
+				procitaj(TZAREZ);
+				return new Continue;
+			}
+
+			case ASSERT:
+			{
+				procitaj(OOTV);
+				AST* izraz = parseExpression();
+				procitaj(OZATV);
+				procitaj(TZAREZ);
+				return new Assert({izraz});
+			}
+
+			case ERROR:
+			{
+				procitaj(OOTV);
+				AST* izraz = parseExpression();
+				procitaj(OZATV);
+				procitaj(TZAREZ);
+				return new Error({izraz});
+			}
+
+			case VOTV:
+			{
+				ASTList* blok = new ASTList;
+				while(!sljedeci(VZATV))
+					blok->push_back(parseStatement());
+
+				procitaj(VZATV);
+				return blok;
+			}
+
+			default:
+				AST* simple = parseSimple();
+				procitaj(TZAREZ);
+				return simple;
+		}
+	}
+
+	AST* parseSimple()
+	{
+		
 	}
 
 }

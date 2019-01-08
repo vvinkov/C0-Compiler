@@ -90,6 +90,79 @@ namespace C0Compiler
 			virtual ~DefinicijaFunkcije() {}
 	};
 
+	class If : public AST
+	{
+		public:
+			If(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+			virtual void compiliraj() override {/* compiliraj uvjet i tijelo */ }
+			virtual ~If() {}
+	};
+
+	class IfElse : public If
+	{
+		public:
+			IfElse(std::list<AST*>&& djeca) : If(std::move(djeca)) {}
+			virtual void compiliraj() override {/* compiliraj if preko parenta, else sam */}
+			virtual ~IfElse() {}
+	};
+
+	class While : public AST
+	{
+		public:
+            While(std::list<AST*>&& djeca) : AST(std::move(djeca)){}
+            virtual void compiliraj() override {/*you know what to do*/}
+            virtual ~While() {}
+	};
+
+	class For : public AST
+	{
+		public:
+			For(std::list<AST*>&& djeca) : AST(std::move(djeca)){}
+			virtual void compiliraj() override {}
+			virtual ~For(){}
+	};
+
+	class Return : public AST
+	{
+		public:
+			Return(std::list<AST*>&& djeca) : AST(std::move(djeca)){}
+			virtual void compiliraj() override {}
+			virtual ~Return(){}
+	};
+
+	// 08.01.2019. možda bi bilo dobro staviti da break i continue nasljeđuju od leaf
+	class Break : public AST
+	{
+		public:
+			Break() : AST(){}
+			virtual void compiliraj() override {}
+			virtual ~Break(){}
+	};
+
+	class Continue : public AST
+	{
+		public:
+			Continue() : AST(){}
+			virtual void compiliraj() override {}
+			virtual ~Continue(){}
+	};
+
+	class Assert : public AST
+	{
+		public:
+			Assert(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+			virtual void compiliraj() override {}
+			virtual ~Assert(){}
+	};
+
+	class Error : public AST
+	{
+		public:
+			Error(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+			virtual void compiliraj() override {}
+			virtual ~Error(){}
+	};
+
 	class Varijabla : public AST
 	{
 		protected:
