@@ -1,5 +1,5 @@
-﻿#ifndef _LEKSER_HPP_
-#define _LEKSER_HPP_
+﻿#ifndef LEKSER_HPP
+#define LEKSER_HPP
 
 #include <fstream>
 #include <deque>

@@ -1,5 +1,5 @@
-﻿#ifndef _PARSER_HPP_
-#define _PARSER_HPP_
+﻿#ifndef PARSER_HPP
+#define PARSER_HPP
 
 // premišljam se da ovdje napišem BKG za C0 ili da uputim ljude na dokumentaciju
 
@@ -10,22 +10,21 @@
 
 namespace C0Compiler
 {
+
 	class Parser
 	{
 		private:
 			std::deque<Token*> m_tokeni;					// tokeni koje je lekser konstruirao
-			std::deque<AST*> m_ASTs;						// AST-ovi koje je parser konstruirao
-			std::deque<Token*> buffer;						// mjesto gdje držim tokene koji još nisu složeni u AST 
 			Token* zadnji;									// ovdje držim zadnji pročitani token 
+			//AST* m_korijen;									// AST-ovi koje je parser konstruirao
 			bool vracanje_ok;								// flag, dozvoljavamo li vraćanje glave za čitanje nazad
 		
 			void pocisti();									// počisti memoriju alociranu za tokene, AST i "zadnji"
-			void dodajGranu(Token* token);					// dodaje granu u AST (čitaj: push_back zadnji u buffer)
-			void dodajGranu(Token& token);
-			AST const& sASTavi(ASTtip tip);					// sastavlja AST tipa "tip" od tokena koji su u bufferu i vraća isti AST
 			
-			AST const& parsirajUse();						// parsiraj #use direktivu
-			AST const& parsirajFunkcija();					// parsiraj funkciju
+			AST* parseUse();								// parsiraj #use direktivu
+			AST* parseFunction();								// parsiraj funkciju (deklaraciju ili definiciju)
+			AST* parseStatement();
+
 		protected:
 			Token& citaj();									// čitaj sljedeći token
 			Token& procitaj(TokenTip tip);					// čitaj sljedeći token ako je tipa 'tip', inače vrati grešku
@@ -34,7 +33,6 @@ namespace C0Compiler
 			void sintaksnaGreska(std::string const& opis);	// prijavljuje sintaksnu grešku i zaustavlja izvršavanje programa
 
 		public:
-
 			Parser() = delete;
 			Parser(std::deque<Token*>&& tokeni);
 			void parsiraj();								// konstruira AST-ove od tokena

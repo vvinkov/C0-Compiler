@@ -16,52 +16,8 @@ namespace C0Compiler
 			m_tokeni.pop_front();
 		}
 
-		while (!m_ASTs.empty())
-		{
-			delete m_ASTs.front();
-			m_ASTs.front() = nullptr;
-			m_ASTs.pop_front();
-		}
-
-		while (!buffer.empty())
-		{
-			delete buffer.front();
-			buffer.front() = nullptr;
-			buffer.pop_front();
-		}
-
 		delete zadnji;
 		zadnji = nullptr;
-	}
-
-	void Parser::dodajGranu(Token* token) 
-	{
-		buffer.push_back(token);
-	}
-
-	void Parser::dodajGranu(Token& token)
-	{
-		buffer.push_back(&token);
-	}
-
-	AST const& Parser::sASTavi(ASTtip tip)
-	{
-		switch (tip)
-		{
-			case USE_DIREKTIVA:
-				UseDirektiva* novi = new UseDirektiva(buffer);
-				m_ASTs.push_back(novi);
-				return *novi;
-
-			case FUNKCIJA:
-				Funkcija* novi = new Funkcija(buffer);
-				m_ASTs.push_back(novi);
-				break;
-
-			default:
-				std::cerr << "Greska! Nepoznat tip AST-a!" << std::endl;
-		}
-		buffer.clear();
 	}
 
 	Token& Parser::citaj()
@@ -111,21 +67,25 @@ namespace C0Compiler
 
 	void Parser::parsiraj()
 	{
+		Program prog;
+
 		// prvo parsiraj use direktive
 		while (sljedeci(USE))
-			parsirajUse();	
+			prog.dodajDijete(parseUse());	
 
 		// nakon toga stižu funkcije, koje su pretty much sve ostalo
 		while(!citaj().isOfType(KRAJ))
-			parsirajFunkcija();	
+			parseFunction();	
 	}
 
-	AST const& Parser::parsirajUse()
+	AST* Parser::parseUse()
 	{
-		citaj();
+		citaj();	// USE
+		citaj();	// STRLIT, ako je sve u redu
 		if (zadnji->isOfType(STRLIT))
 		{
-			return sASTavi(USE_DIREKTIVA);
+			Leaf* datoteka = new Leaf(*zadnji);
+			return new UseDirektiva({ datoteka });
 		}
 		else
 		{
@@ -135,7 +95,7 @@ namespace C0Compiler
 		}
 	}
 
-	AST const& Parser::parsirajFunkcija()
+	AST* Parser::parseFunction()
 	{
 		// 21.12.2018. možda bi bilo dobro dodati pointere i arraye kao povratne vrijednosti
 		if (zadnji->isOfType(INT)
@@ -144,11 +104,13 @@ namespace C0Compiler
 			|| zadnji->isOfType(CHAR)
 			|| zadnji->isOfType(VOID))
 		{
-			dodajGranu(zadnji);
 			// ako si pročitao INT, BOOL, STRING, CHAR ili VOID, 
 			// imaš legalnu povratnu vrijednost funkcije
-			
-			dodajGranu(procitaj(IDENTIFIER));
+			ASTList* argumenti = new ASTList;
+
+			Leaf* povratniTip = new Leaf(*zadnji);
+			Leaf* ime = new Leaf(procitaj(IDENTIFIER));
+
 			procitaj(OOTV);
 			while (!sljedeci(OZATV))
 			{
@@ -159,20 +121,51 @@ namespace C0Compiler
 					|| zadnji->isOfType(STRING)
 					|| zadnji->isOfType(CHAR)))
 				{
-					sintaksnaGreska("Nepoznat tip " + zadnji->getTip +
+					sintaksnaGreska("Nepoznat tip " + tokenString[zadnji->getTip()] +
 									", ocekujem " + tokenString[INT] +
 									", " + tokenString[BOOL] +
 									", " + tokenString[STRING] +
 									", ili " + tokenString[CHAR]);
 				}
-				// else...
-				// zapamti tip i pročitaj ime varijable
-				dodajGranu(zadnji);
-				dodajGranu(procitaj(IDENTIFIER));
+				// else zapamti tip i pročitaj ime varijable
+				Leaf* tip = new Leaf(*zadnji);
+				Leaf* ime = new Leaf(procitaj(IDENTIFIER));
+				
 				if (!sljedeci(OZATV))
-					procitaj(ZAREZ);// OVDJE SMO STALI
+					procitaj(ZAREZ);
+
+				argumenti->push_back(new Varijabla({ tip, ime }));
 			}
+
+			if(sljedeci(TZAREZ))
+			{
+				// ako je poslije deklaracije funkcije točkazarez, onda još nema defniciju.
+				// pročitaj ga i pusti deklaraciju funkcije da radi svoje
+				procitaj(TZAREZ);
+				return new DeklaracijaFunkcije({ povratniTip, ime, argumenti });
+			}
+			// else, funkcija ima i tijelo - idemo ga parsirati
+			procitaj(VOTV);
+			ASTList* tijelo = new ASTList;
+			while (!sljedeci(VZATV))
+				tijelo->push_back(parseStatement());
+
+			return new DefinicijaFunkcije({ povratniTip, ime, argumenti, tijelo });
 		}
+		else
+		{
+			sintaksnaGreska("Nepoznat tip " + tokenString[zadnji->getTip()] +
+							", ocekujem " + tokenString[INT] +
+							", " + tokenString[BOOL] +
+							", " + tokenString[STRING] +
+							", " + tokenString[CHAR] +
+							", ili " + tokenString[VOID]);
+		}
+	}
+
+	AST* Parser::parseStatement()
+	{
+
 	}
 
 }

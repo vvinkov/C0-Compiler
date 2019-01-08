@@ -1,5 +1,5 @@
-﻿#ifndef _TOKEN_HPP_
-#define _TOKEN_HPP_
+﻿#ifndef TOKEN_HPP
+#define TOKEN_HPP
 
 // Tokeni koje planiram koristiti:
 
@@ -64,12 +64,12 @@
 // ERROR		|	   error	|
 // ALLOC		|	   alloc	|
 // ALLOCA		|	alloc_array	|
-// IDENTIFIER	|				|	identifier varijable, funkcije itd.
+// IDENTIFIER	|				|	identifikator varijable, funkcije itd.
 // DEKADSKI		|				|	broj u dekadskom zapisu
 // HEKSADEKADSKI|				|	broj u heksadekadskom zapisu
 // CHRLIT		|				|	char literal
 // STRLIT		|				|	string literal
-// BOOLEAN		|				|	true-false
+// BOOLEAN		|				|	true/false
 // NUL			|	   NULL		|
 // BREAK		|	  break		|
 // CONTINUE		|	 continue	|
@@ -83,7 +83,7 @@
 // ARRAY		|				|	array		->			svaki mogući tip arraya i tokena
 // USE			|	   #use		|
 // PRAZNO		|				|	znak ' '
-// POCETAK		|				|	pocetak datoteke
+// POCETAK		|				|	početak datoteke
 // KRAJ			|				|	kraj datoteke
 
 #include <string>
@@ -91,6 +91,11 @@
 
 namespace C0Compiler
 {
+	// Leaf je list u apstraktnom sintaksnom stablu,
+	// zamišljen je kao tanki AST wrapper za token.
+	// definicija u AST.hpp
+	class Leaf; 
+
 	enum TokenTip
 	{
 		// separatori
@@ -137,7 +142,8 @@ namespace C0Compiler
 			int m_stupac;
 
 		public:
-			Token(TokenTip tip, std::string const& sadrzaj, int redak, int stupac) : m_tip(tip), m_sadrzaj(sadrzaj), m_redak(redak), m_stupac(stupac) {}
+			Token(TokenTip tip = PRAZNO, std::string const& sadrzaj = "", int redak = -1, int stupac = -1) : 
+				m_tip(tip), m_sadrzaj(sadrzaj), m_redak(redak), m_stupac(stupac) {}
 			
 			TokenTip getTip() { return m_tip; }
 			int getRedak() { return m_redak; }
@@ -146,6 +152,8 @@ namespace C0Compiler
 			std::string const& getSadrzaj() { return m_sadrzaj; }
 			bool isOfType(TokenTip tip) { return m_tip == tip; }
 			bool isOfType(Token const& token) { return m_tip == token.m_tip; }
+
+			operator Leaf() const;	// zamotaj Token u Leaf
 
 			friend std::ostream& operator<<(std::ostream& out, Token const&);
 	};
