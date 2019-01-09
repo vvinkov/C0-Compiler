@@ -24,8 +24,13 @@ namespace C0Compiler
 			AST* parseUse();								// parsiraj #use direktivu
 			AST* parseFunction();							// parsiraj funkciju (deklaraciju ili definiciju)
 			AST* parseStatement();
-			AST* parseExpression();
 			AST* parseSimple();
+			AST* parseExpression();
+			AST* parseLogicki();
+			AST* parseBitwise();
+			AST* parseEquality();
+			AST* parseComparison();
+			AST* parseShifts();
 
 		protected:
 			Token& citaj();									// čitaj sljedeći token

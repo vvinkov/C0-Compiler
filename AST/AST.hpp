@@ -170,10 +170,67 @@ namespace C0Compiler
 			std::string m_ime;
 
 		public:
-			Varijabla(std::initializer_list<AST*> parametri);
+			Varijabla(std::list<AST*>&& djeca) : AST(std::move(djeca)){};
 
-			virtual void compiliraj() override {/* zapamti varijablu i njenu vrijednost */};
+			virtual void compiliraj() override {/* radi nešto s varijablom */};
 			virtual ~Varijabla(){}
+	};
+
+	class DeklaracijaVarijable : public Varijabla
+	{
+		protected:
+			std::string m_desno;
+
+		public:
+			DeklaracijaVarijable(std::list<AST*>&& djeca) : Varijabla(std::move(djeca)){}
+			
+			virtual void compiliraj() override {/* zapamti varijablu i njenu vrijednost */ };
+			virtual ~DeklaracijaVarijable() {}
+	};
+
+	class TernarniOperator : public AST
+	{
+		public:
+			TernarniOperator(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+
+			virtual void compiliraj() override {/* ternarno operiraj */};
+			virtual ~TernarniOperator() {}
+	};
+
+	class LogickiOperator : public AST
+	{
+		public:
+			LogickiOperator(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+
+			virtual void compiliraj() override {/* logicki operiraj */};
+			virtual ~LogickiOperator() {}
+	};
+
+	class BitwiseOperator : public AST
+	{
+		public:
+			BitwiseOperator(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+
+			virtual void compiliraj() override {/* bitwise operiraj */};
+			virtual ~BitwiseOperator() {}
+	};
+
+	class OperatorJednakost : public AST
+	{
+		public:
+			OperatorJednakost(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+
+			virtual void compiliraj() override {/* operiraj jednakost */};
+			virtual ~OperatorJednakost() {}
+	};
+
+	class OperatorUsporedbe : public AST
+	{
+		public:
+			OperatorUsporedbe(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+
+			virtual void compiliraj() override {/* operiraj usporedbu */};
+			virtual ~OperatorUsporedbe() {}
 	};
 
 	class Leaf : public AST

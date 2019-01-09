@@ -1,12 +1,18 @@
 # C0 compiler
 
-## Done: 
+## Done 
 ### Lekser
 cijeli
 ### Parser
 * use direktiva
 * funkcije
 * statement
+* simple
+* expression
+* logički operatori
+* bitwise operatori
+* operatori ==, !=
+* operatori uspoređivanja
 ### Optimizer
 ništa
 ### Compiler
@@ -17,12 +23,6 @@ ništa
 ### Lekser
 ništa
 ### Parser 
-* simple
-* expression
-* logički operatori
-* bitwise operatori
-* operatori ==, !=
-* operatori uspoređivanja
 * lijevi i desni shift
 * operatori +, -
 * operatori *, /, %
@@ -37,3 +37,6 @@ copy konstruktor, move konstruktor, operatori pridruživanja i destruktori u svi
 sve
 ### Compiler
 sve
+### Exceptioni
+### Pointerska aritmetika
+### Ljepši error reporting subsystem

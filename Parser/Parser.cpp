@@ -273,9 +273,141 @@ namespace C0Compiler
 		}
 	}
 
-	AST* parseSimple()
+	AST* Parser::parseSimple()
 	{
-		
+		Token zadnji = citaj();
+		switch (zadnji.getTip())
+		{
+			case INT:
+			case BOOL:
+			case STRING:
+			case CHAR:
+			case POINTER:
+			case ARRAY:
+			{
+				Leaf* tip = new Leaf(zadnji);
+				Leaf* ime = new Leaf(procitaj(IDENTIFIER));
+				AST* varijabla = new Varijabla({tip, ime});
+				if (sljedeci(ASSIGN))
+				{
+					procitaj(ASSIGN);
+					AST* desno = parseExpression();
+					return new DeklaracijaVarijable({varijabla, desno});
+				}
+				else
+					return varijabla;
+			}
+			default:
+				return parseExpression();
+		}
 	}
 
+	AST* Parser::parseExpression()
+	{
+		AST* trenutni = parseLogicki();
+
+		while (true)
+		{
+			if (citaj().getTip() == CONDQ)
+			{
+				AST* caseTrue = parseExpression();
+				procitaj(DTOCKA);
+				AST* caseFalse = parseExpression();
+				trenutni = new TernarniOperator({trenutni, caseTrue, caseFalse});
+			}
+			else
+			{
+				vrati();
+				return trenutni;
+			}
+		}
+	}
+
+	AST* Parser::parseLogicki()
+	{
+		AST* trenutni = parseBitwise();
+		while (true)
+		{
+			Token& zadnji = citaj();
+			switch (zadnji.getTip())
+			{
+				case LAND:
+				case LOR:
+					Leaf* operacija = new Leaf(zadnji);
+					trenutni = new LogickiOperator({trenutni, parseBitwise(), operacija});
+				
+				default:
+					vrati();
+					return trenutni;
+			}
+		}
+	}
+
+	AST* Parser::parseBitwise()
+	{
+		AST* trenutni = parseEquality();
+		while (true)
+		{
+			Token& zadnji = citaj();
+			switch (zadnji.getTip())
+			{
+				case BITAND:
+				case BITXOR:
+				case BITOR:
+					Leaf* operacija = new Leaf(zadnji);
+					trenutni = new BitwiseOperator({ trenutni, parseEquality(), operacija });
+
+				default:
+					vrati();
+					return trenutni;
+			}
+		}
+	}
+
+	AST* Parser::parseEquality()
+	{
+		AST* trenutni = parseComparison();
+		while (true)
+		{
+			Token& zadnji = citaj();
+			switch (zadnji.getTip())
+			{
+				case EQ:
+				case NEQ:
+					Leaf* operacija = new Leaf(zadnji);
+					trenutni = new OperatorJednakost({ trenutni, parseComparison(), operacija });
+
+				default:
+					vrati();
+					return trenutni;
+			}
+		}
+	}
+
+	AST* Parser::parseComparison()
+	{
+		AST* trenutni = parseShifts();
+		while (true)
+		{
+			Token& zadnji = citaj();
+			switch (zadnji.getTip())
+			{
+				case LESS:
+				case LESSEQ:
+				case GRT:
+				case GRTEQ:
+					Leaf* operacija = new Leaf(zadnji);
+					trenutni = new OperatorUsporedbe({ trenutni, parseShifts(), operacija });
+
+				default:
+					vrati();
+					return trenutni;
+			}
+		}
+	}
+
+	AST* Parser::parseShifts()
+	{
+
+	}
 }
