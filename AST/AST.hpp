@@ -233,6 +233,114 @@ namespace C0Compiler
 			virtual ~OperatorUsporedbe() {}
 	};
 
+	class BinarniOperator : public AST
+	{
+		public:
+			BinarniOperator(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+
+			virtual void compiliraj() override {/* binarno operiraj */ };
+			virtual ~BinarniOperator() {}
+	};
+
+	class OperatorPridruzivanja : public AST
+	{
+		public:
+			OperatorPridruzivanja(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+
+			virtual void compiliraj() override {/* pridruži */ };
+			virtual ~OperatorPridruzivanja() {}
+	};
+
+	class Alokacija : public AST
+	{
+		public:
+			Alokacija(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+
+			virtual void compiliraj() override {/* alociraj */ };
+			virtual ~Alokacija() {}
+	};
+
+	class AlokacijaArray : public AST
+	{
+		public:
+			AlokacijaArray(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+
+			virtual void compiliraj() override {/* alociraj array */ };
+			virtual ~AlokacijaArray() {}
+	};
+
+	class Negacija : public AST
+	{
+		public:
+			Negacija(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+
+			virtual void compiliraj() override {/* negiraj */ };
+			virtual ~Negacija() {}
+	};
+
+	class Tilda : public AST
+	{
+		public:
+			Tilda(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+
+			virtual void compiliraj() override {/* iztildači */ };
+			virtual ~Tilda() {}
+	};
+
+	class Minus : public AST
+	{
+		public:
+			Minus(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+
+			virtual void compiliraj() override {/* promijeni predznak */ };
+			virtual ~Minus() {}
+	};
+
+	class Dereferenciranje : public AST
+	{
+		public:
+			Dereferenciranje(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+
+			virtual void compiliraj() override {/* dereferenciraj */ };
+			virtual ~Dereferenciranje() {}
+	};
+
+	class PozivFunkcije : public AST
+	{
+		public:
+			PozivFunkcije(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+
+			virtual void compiliraj() override {/* pozovi funkciju */ };
+			virtual ~PozivFunkcije() {}
+	};
+
+	class Inkrement : public AST
+	{
+		public:
+			Inkrement(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+
+			virtual void compiliraj() override {/* inkrementiraj */ };
+			virtual ~Inkrement() {}
+	};
+
+	class Dekrement : public AST
+	{
+		public:
+			Dekrement(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+
+			virtual void compiliraj() override {/* dekrementiraj */ };
+			virtual ~Dekrement() {}
+	};
+
+	class UglateZagrade : public AST
+	{
+	public:
+		UglateZagrade(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+
+		virtual void compiliraj() override {/* dohvati što je u uglatim zagradama */ };
+		virtual ~UglateZagrade() {}
+	};
+
 	class Leaf : public AST
 	{
 		protected:
@@ -253,7 +361,7 @@ namespace C0Compiler
 			using iterator = std::list<AST*>::iterator;
 
 			ASTList() : AST(){}
-			void push_back(AST* novi) { m_djeca.push_back(novi); }
+			void push_back(AST* novi) { dodajDijete(novi); }	// premišljam se da ostavim dodajDijete ili da napišem novu funkciju koja dodaje dijete i kao parenta mu stavi svog parenta umjesto sebe
 			virtual void compiliraj() override {/* compiliraj sve svoje elemente */};
 
 			iterator begin() { return m_djeca.begin(); }

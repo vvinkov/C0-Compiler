@@ -75,7 +75,7 @@ namespace C0Compiler
 
 		// nakon toga stižu funkcije, koje su pretty much sve ostalo
 		while(!citaj().isOfType(KRAJ))
-			parseFunction();	
+			prog.dodajDijete(parseFunction());	
 	}
 
 	AST* Parser::parseUse()
@@ -333,12 +333,16 @@ namespace C0Compiler
 			{
 				case LAND:
 				case LOR:
+				{
 					Leaf* operacija = new Leaf(zadnji);
-					trenutni = new LogickiOperator({trenutni, parseBitwise(), operacija});
-				
+					trenutni = new LogickiOperator({ trenutni, parseBitwise(), operacija });
+					break;
+				}
 				default:
+				{
 					vrati();
 					return trenutni;
+				}
 			}
 		}
 	}
@@ -354,12 +358,16 @@ namespace C0Compiler
 				case BITAND:
 				case BITXOR:
 				case BITOR:
+				{
 					Leaf* operacija = new Leaf(zadnji);
 					trenutni = new BitwiseOperator({ trenutni, parseEquality(), operacija });
-
+					break;
+				}
 				default:
+				{
 					vrati();
 					return trenutni;
+				}
 			}
 		}
 	}
@@ -374,12 +382,16 @@ namespace C0Compiler
 			{
 				case EQ:
 				case NEQ:
+				{
 					Leaf* operacija = new Leaf(zadnji);
 					trenutni = new OperatorJednakost({ trenutni, parseComparison(), operacija });
-
+					break;
+				}
 				default:
+				{
 					vrati();
 					return trenutni;
+				}
 			}
 		}
 	}
@@ -396,18 +408,295 @@ namespace C0Compiler
 				case LESSEQ:
 				case GRT:
 				case GRTEQ:
+				{
 					Leaf* operacija = new Leaf(zadnji);
 					trenutni = new OperatorUsporedbe({ trenutni, parseShifts(), operacija });
-
+					break;
+				}
 				default:
+				{
 					vrati();
 					return trenutni;
+				}
 			}
 		}
 	}
 
 	AST* Parser::parseShifts()
 	{
+		AST* trenutni = parseAdd();
+		while (true)
+		{
+			Token& zadnji = citaj();
+			switch (zadnji.getTip())
+			{
+				case LSHIFT:
+				case RSHIFT:
+				{
+					Leaf* operacija = new Leaf(zadnji);
+					trenutni = new BinarniOperator({ trenutni, parseAdd(), operacija });
+					break;
+				}
+				default:
+				{
+					vrati();
+					return trenutni;
+				}
+			}
+		}
+	}
 
+	AST* Parser::parseAdd()
+	{
+		AST* trenutni = parseFactor();
+		while (true)
+		{
+			Token& zadnji = citaj();
+			switch (zadnji.getTip())
+			{
+				case PLUS:
+				case MINUS:
+				{
+					Leaf* operacija = new Leaf(zadnji);
+					trenutni = new BinarniOperator({ trenutni, parseFactor(), operacija });
+					break;
+				}
+				default:
+				{
+					vrati();
+					return trenutni;
+				}
+			}
+		}
+	}
+
+	AST* Parser::parseFactor()
+	{
+		AST* trenutni = parseAssign();
+		while (true)
+		{
+			Token& zadnji = citaj();
+			switch (zadnji.getTip())
+			{
+				case ZVJ:
+				case SLASH:
+				case MOD:
+				{
+					Leaf* operacija = new Leaf(zadnji);
+					trenutni = new BinarniOperator({ trenutni, parseAssign(), operacija });
+					break;
+				}
+				default:
+				{
+					vrati();
+					return trenutni;
+				}
+			}
+		}
+	}
+
+	AST* Parser::parseAssign()
+	{
+		AST* trenutni = parseAllocate();
+		while (true)
+		{
+			Token& zadnji = citaj();
+			switch (zadnji.getTip())
+			{
+				case PLUSEQ:
+				case MINUSEQ:
+				case ZVJEQ:
+				case SLASHEQ:
+				case MODEQ:
+				case LSHIFTEQ:
+				case RSHIFTEQ:
+				case ASSIGN:
+				case BANDEQ:
+				case BXOREQ:
+				case BOREQ:
+				{
+					Leaf* operacija = new Leaf(zadnji);
+					trenutni = new OperatorPridruzivanja({ trenutni, parseAllocate(), operacija });
+					break;
+				}
+				default:
+				{
+					vrati();
+					return trenutni;
+				}
+			}
+		}
+	}
+
+	AST* Parser::parseAllocate()
+	{
+		AST* trenutni = parseAllocArray();
+		Token& zadnji = citaj();
+		if (zadnji.getTip() == ALLOC)
+		{
+			procitaj(OOTV);
+			zadnji = citaj();
+			switch (zadnji.getTip())
+			{
+				case INT:
+				case BOOL:
+				case STRING:
+				case CHAR:
+				{
+					Leaf* tip = new Leaf(zadnji);
+					procitaj(OZATV);
+					trenutni = new Alokacija({ tip });
+					break;
+				}
+				default:
+				{
+					vrati();
+					sintaksnaGreska("Neocekivan token : " + tokenString[zadnji.getTip] + "(" + zadnji.getSadrzaj() + ")");
+				}
+			}
+		}
+		return trenutni;
+	}
+
+	AST* Parser::parseAllocArray()
+	{
+		AST* trenutni = parseUnary();
+		Token& zadnji = citaj();
+		if (zadnji.getTip() == ALLOCARRAY)
+		{
+			procitaj(OOTV);
+			zadnji = citaj();
+			switch (zadnji.getTip())
+			{
+				case INT:
+				case BOOL:
+				case STRING:
+				case CHAR:
+				{
+					Leaf* tip = new Leaf(zadnji);
+					procitaj(ZAREZ);
+					AST* koliko = parseExpression();
+					procitaj(OZATV);
+					trenutni = new AlokacijaArray({ tip, koliko });
+				}
+				default:
+				{
+					vrati();
+					sintaksnaGreska("Neocekivan token : " + tokenString[zadnji.getTip] + "(" + zadnji.getSadrzaj() + ")");
+				}
+			}
+		}
+		return trenutni;
+	}
+
+	AST* Parser::parseUnary()
+	{
+		Token& zadnji = citaj();
+		AST* iza;	// iza operatora, naravno
+		switch (zadnji.getTip())
+		{
+			case USKL:
+			{
+				iza = parseExpression();
+				return new Negacija({ iza });
+			}
+			case TILDA:
+			{
+				iza = parseExpression();
+				return new Tilda({ iza });
+			}
+			case MINUS:
+			{
+				iza = parseExpression();
+				return new Minus({ iza });
+			}
+			case ZVJ:
+			{
+				iza = parseBase();
+				return new Dereferenciranje({ iza });
+			}
+		}
+		return parseBase();
+	}
+
+	AST* Parser::parseBase()
+	{
+		Token& zadnji = citaj();
+		switch (zadnji.getTip())
+		{
+			case OOTV:
+			{
+				AST* uZagradi = parseExpression();
+				procitaj(OZATV);
+				return uZagradi;
+			}
+			case IDENTIFIER:
+			{
+				// može biti identifier varijable ili funkcije
+				// ako se radi o funkciji, mora imati zagrade nakon sebe
+				Leaf* ime = new Leaf(zadnji);
+				zadnji = citaj();
+				switch (zadnji.getTip())
+				{
+					case OOTV:
+					{
+						ASTList* argumenti = new ASTList;
+						while (!sljedeci(OZATV))
+						{
+							AST* imeVarijable = parseExpression();
+							if (!sljedeci(OZATV))
+								procitaj(ZAREZ);
+
+							argumenti->push_back(imeVarijable);
+						}
+						procitaj(OZATV);
+						return new PozivFunkcije({ ime, argumenti });
+					}
+
+					case INCR:
+					case DECR:
+					{
+						AST* trenutni = ime;
+						while (true)
+						{
+							zadnji = citaj();
+							if (zadnji.getTip() == INCR)
+								trenutni = new Inkrement({ ime });
+							
+							else if(zadnji.getTip() == DECR)
+								trenutni = new Dekrement({ ime });
+
+							else
+							{
+								vrati();
+								break;
+							}
+						}
+						return trenutni;
+					}
+
+					case UOTV:
+					{
+						AST* uZagradi = parseExpression();
+						procitaj(UZATV);
+						return new UglateZagrade({ ime, uZagradi });
+					}
+
+					default:
+					{
+						vrati();
+						return ime;
+					}
+				}
+			}
+			case DEKADSKI:
+			case HEKSADEKADSKI:
+			case STRLIT:
+			case CHRLIT:
+			case BOOLEAN:
+			case NUL:
+				return new Leaf(zadnji);
+		}
+		return nullptr;	// ili još bolje, izbaci grešku
 	}
 }

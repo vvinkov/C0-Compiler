@@ -31,6 +31,13 @@ namespace C0Compiler
 			AST* parseEquality();
 			AST* parseComparison();
 			AST* parseShifts();
+			AST* parseAdd();
+			AST* parseFactor();
+			AST* parseAssign();
+			AST* parseAllocate();
+			AST* parseAllocArray();
+			AST* parseUnary();
+			AST* parseBase();
 
 		protected:
 			Token& citaj();									// čitaj sljedeći token

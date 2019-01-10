@@ -4,15 +4,7 @@
 ### Lekser
 cijeli
 ### Parser
-* use direktiva
-* funkcije
-* statement
-* simple
-* expression
-* logički operatori
-* bitwise operatori
-* operatori ==, !=
-* operatori uspoređivanja
+cijeli
 ### Optimizer
 ništa
 ### Compiler
@@ -23,14 +15,7 @@ ništa
 ### Lekser
 ništa
 ### Parser 
-* lijevi i desni shift
-* operatori +, -
-* operatori *, /, %
-* operatori pridruživanja
-* allocate keyword
-* alloc_array keyword
-* unarni operatori
-* zagrade, identifieri, postfix operatori
+ništa
 ### AST memory management
 copy konstruktor, move konstruktor, operatori pridruživanja i destruktori u svim AST-ovima
 ### Optimizer

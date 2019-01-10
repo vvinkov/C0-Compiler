@@ -26,17 +26,17 @@ namespace C0Compiler
 	////////////////////////////////////////////////////////////////////////////////////
 	// Varijabla
 
-	Varijabla::Varijabla(std::initializer_list<AST*> parametri)
-	{
-		std::initializer_list<AST*>::iterator it = parametri.begin();
-		
-		// užasno, znam.
-		m_tip = static_cast<Token>(*dynamic_cast<Leaf const*>(*it++)).getSadrzaj();
-		m_ime = static_cast<Token>(*dynamic_cast<Leaf const*>(*it++)).getSadrzaj();
+	//Varijabla::Varijabla(std::initializer_list<AST*> parametri)
+	//{
+	//	std::initializer_list<AST*>::iterator it = parametri.begin();
+	//	
+	//	// užasno, znam.
+	//	m_tip = static_cast<Token>(*dynamic_cast<Leaf const*>(*it++)).getSadrzaj();
+	//	m_ime = static_cast<Token>(*dynamic_cast<Leaf const*>(*it++)).getSadrzaj();
 
-		for (; it != parametri.end(); ++it)
-		{
+	//	for (; it != parametri.end(); ++it)
+	//	{
 
-		}
-	}
+	//	}
+	//}
 }

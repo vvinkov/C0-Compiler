@@ -192,7 +192,7 @@ namespace C0Compiler
 				else if (sadrzaj == "continue") tokeniziraj(CONTINUE);
 				else if (sadrzaj == "return") tokeniziraj(RETURN);
 				else if (sadrzaj == "alloc") tokeniziraj(ALLOC);
-				else if (sadrzaj == "alloc_array") tokeniziraj(ALLOCA);
+				else if (sadrzaj == "alloc_array") tokeniziraj(ALLOCARRAY);
 				else if (sadrzaj == "int")
 				{
 					// ako si pročitao int, možda je poslije njega '*'

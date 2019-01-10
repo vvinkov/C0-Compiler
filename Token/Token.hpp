@@ -63,14 +63,14 @@
 // ASSERT		|	  assert	|
 // ERROR		|	   error	|
 // ALLOC		|	   alloc	|
-// ALLOCA		|	alloc_array	|
+// ALLOCARRAY	|	alloc_array	|
 // IDENTIFIER	|				|	identifikator varijable, funkcije itd.
 // DEKADSKI		|				|	broj u dekadskom zapisu
 // HEKSADEKADSKI|				|	broj u heksadekadskom zapisu
 // CHRLIT		|				|	char literal
 // STRLIT		|				|	string literal
 // BOOLEAN		|				|	true/false
-// NUL			|	   NULL		|
+// NUL			|	   NULL		|	ovo je C++ i NULL je rezervirana riječ pa koristim NUL
 // BREAK		|	  break		|
 // CONTINUE		|	 continue	|
 // RETURN		|	  return	|
@@ -125,7 +125,7 @@ namespace C0Compiler
 		IF, ELSE, WHILE, FOR, ASSERT, ERROR,
 
 		// razno
-		ALLOC, ALLOCA, IDENTIFIER, DEKADSKI, HEKSADEKADSKI, CHRLIT, STRLIT, BOOLEAN,
+		ALLOC, ALLOCARRAY, IDENTIFIER, DEKADSKI, HEKSADEKADSKI, CHRLIT, STRLIT, BOOLEAN,
 		NUL, BREAK, CONTINUE, RETURN, INT, BOOL, CHAR, STRING, VOID, POINTER, ARRAY, 
 		USE, PRAZNO, POCETAK, KRAJ
 	};
