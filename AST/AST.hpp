@@ -11,44 +11,50 @@ namespace C0Compiler
 {
 
 	// opća klasa za AST, da ih mogu sve pobacati u jedan container
-	// 21.12.2018. ideja je bila: privatni konstruktori ovdje i friendly factory u parseru,
-	// ali nešto me zeza i trenutno nemam internet da provjerim šta mu je
 
 	// 26.12.2018. deque ne prikazuje stablastu strukturu dovoljno dobro, sad je svaki AST čvor u 
 	// jednom ogromnom globalnom AST i zna tko mu je roditelj, tko djeca i tko je veliki korijen.
 	// zasad koristim list jer mi ne treba ništa jače
 
-	// obavezno dodati CCtor, MCtor, OP= i destruktor! zasad memorija curi na sve strane!
-
 	class AST
 	{
 		private:
-			static AST* m_korijen;				// veliki korijen
+			static AST* korijen;				// veliki, glavni korijen
+			static std::list<AST*> sirocad;		// AST-ovi bez roditelja
 			AST* m_roditelj;					// pointer na roditelja, nullptr ako se radi o korijenu (program)
+			
+			void ucitajDjecu(std::list<AST*> const& djeca);
+			void pobrisiDjecu();
 
 		protected:
 			std::list<AST*> m_djeca;			// lista djece, pointeri su zato da izbjegnem slicing
 
-			AST() : m_djeca() {}
+			AST() : m_djeca() { sirocad.push_back(this); }
+			AST(AST const& drugi) { ucitajDjecu(drugi.m_djeca); }
+			AST(AST&& drugi);
 			AST(std::list<AST*>&& djeca);
 
 		public:
 			void dodajDijete(AST* dijete);		// dodaje granu u AST (čitaj: push_back u listu djece)
-			void setKorijen(AST* korijen) { m_korijen = korijen; }
-			void setRoditelj(AST* roditelj) { m_roditelj = roditelj; }
+			void setKorijen(AST* novi_korijen) { korijen = novi_korijen; }
+			void setRoditelj(AST* roditelj);
 
 			AST* getRoditelj() { return m_roditelj; }
 			bool isRoot() { return m_roditelj == nullptr; }
 
-			virtual void compiliraj() = 0;		// ovo će se možda drugačije zvati ubuduće, analogon "izvrši" s IP,
-			virtual ~AST(){}					// osim što sad ne interpretiram, nego optimiziram i compiliram
+			AST& operator=(AST const& drugi);
+			AST&& operator=(AST&& drugi);
+			virtual void compiliraj() = 0;		// ovo će se možda drugačije zvati ubuduće, analogon "izvrši" s IP, osim što sad ne interpretiram, nego optimiziram i compiliram
+
+			virtual ~AST();
 	};
 
 	class Program : public AST
 	{
 		public:
-			Program() { setKorijen(this); setRoditelj(nullptr); }
+			Program() : AST() { setKorijen(this); setRoditelj(nullptr); }
 			Program(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+			Program(Program const& drugi) : AST(drugi) {}
 			
 			virtual void compiliraj() override {/* compiliraj svu djecu */};
 			virtual ~Program(){}
@@ -61,6 +67,7 @@ namespace C0Compiler
 
 		public:
 			UseDirektiva(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+			UseDirektiva(UseDirektiva const& drugi) : AST(drugi) { path = drugi.path; }
 			
 			virtual void compiliraj() override {/* compiliraj datoteku koja se nalazi na path*/};
 			virtual ~UseDirektiva(){}
@@ -74,18 +81,18 @@ namespace C0Compiler
 			
 		public:
 			DeklaracijaFunkcije(std::list<AST*>&& djeca) : AST(std::move(djeca)){}
-			
+			DeklaracijaFunkcije(DeklaracijaFunkcije const& drugi) : AST(drugi) { m_povratniTip = drugi.m_povratniTip; m_ime = drugi.m_ime; }
+
 			virtual void compiliraj() override {/* compiliraj svoju djecu */};
 			virtual ~DeklaracijaFunkcije(){}
 	};
 
 	class DefinicijaFunkcije : public DeklaracijaFunkcije
 	{
-		protected:
-			ASTList* tijelo;
-
 		public:
 			DefinicijaFunkcije(std::list<AST*>&& djeca) : DeklaracijaFunkcije(std::move(djeca)) {}
+			DefinicijaFunkcije(DefinicijaFunkcije const& drugi) : DeklaracijaFunkcije(drugi) {}
+			
 			virtual void compiliraj() override {/* compiliraj svoju djecu */ };
 			virtual ~DefinicijaFunkcije() {}
 	};
@@ -94,6 +101,8 @@ namespace C0Compiler
 	{
 		public:
 			If(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+			If(If const& drugi) : AST(drugi) {}
+			
 			virtual void compiliraj() override {/* compiliraj uvjet i tijelo */ }
 			virtual ~If() {}
 	};
@@ -102,6 +111,8 @@ namespace C0Compiler
 	{
 		public:
 			IfElse(std::list<AST*>&& djeca) : If(std::move(djeca)) {}
+			IfElse(IfElse const& drugi) : If(drugi) {}
+			
 			virtual void compiliraj() override {/* compiliraj if preko parenta, else sam */}
 			virtual ~IfElse() {}
 	};
@@ -110,6 +121,8 @@ namespace C0Compiler
 	{
 		public:
             While(std::list<AST*>&& djeca) : AST(std::move(djeca)){}
+			While(While const& drugi) : AST(drugi) {}
+
             virtual void compiliraj() override {/*you know what to do*/}
             virtual ~While() {}
 	};
@@ -118,6 +131,8 @@ namespace C0Compiler
 	{
 		public:
 			For(std::list<AST*>&& djeca) : AST(std::move(djeca)){}
+			For(For const& drugi) : AST(drugi) {}
+
 			virtual void compiliraj() override {}
 			virtual ~For(){}
 	};
@@ -126,6 +141,8 @@ namespace C0Compiler
 	{
 		public:
 			Return(std::list<AST*>&& djeca) : AST(std::move(djeca)){}
+			Return(Return const& drugi) : AST(drugi) {}
+
 			virtual void compiliraj() override {}
 			virtual ~Return(){}
 	};
@@ -135,6 +152,8 @@ namespace C0Compiler
 	{
 		public:
 			Break() : AST(){}
+			Break(Break const& drugi) : AST(drugi) {}
+
 			virtual void compiliraj() override {}
 			virtual ~Break(){}
 	};
@@ -143,6 +162,8 @@ namespace C0Compiler
 	{
 		public:
 			Continue() : AST(){}
+			Continue(Continue const& drugi) : AST(drugi) {}
+
 			virtual void compiliraj() override {}
 			virtual ~Continue(){}
 	};
@@ -151,6 +172,8 @@ namespace C0Compiler
 	{
 		public:
 			Assert(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+			Assert(Assert const& drugi) : AST(drugi) {}
+
 			virtual void compiliraj() override {}
 			virtual ~Assert(){}
 	};
@@ -159,6 +182,8 @@ namespace C0Compiler
 	{
 		public:
 			Error(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+			Error(Error const& drugi) : AST(drugi) {}
+
 			virtual void compiliraj() override {}
 			virtual ~Error(){}
 	};
@@ -171,6 +196,7 @@ namespace C0Compiler
 
 		public:
 			Varijabla(std::list<AST*>&& djeca) : AST(std::move(djeca)){};
+			Varijabla(Varijabla const& drugi) : AST(drugi) { m_tip = drugi.m_tip; m_ime = drugi.m_ime; }
 
 			virtual void compiliraj() override {/* radi nešto s varijablom */};
 			virtual ~Varijabla(){}
@@ -183,7 +209,8 @@ namespace C0Compiler
 
 		public:
 			DeklaracijaVarijable(std::list<AST*>&& djeca) : Varijabla(std::move(djeca)){}
-			
+			DeklaracijaVarijable(DeklaracijaVarijable const& drugi) : Varijabla(drugi) { m_desno = drugi.m_desno; }
+
 			virtual void compiliraj() override {/* zapamti varijablu i njenu vrijednost */ };
 			virtual ~DeklaracijaVarijable() {}
 	};
@@ -192,6 +219,7 @@ namespace C0Compiler
 	{
 		public:
 			TernarniOperator(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+			TernarniOperator(TernarniOperator const& drugi) : AST(drugi) {}
 
 			virtual void compiliraj() override {/* ternarno operiraj */};
 			virtual ~TernarniOperator() {}
@@ -201,6 +229,7 @@ namespace C0Compiler
 	{
 		public:
 			LogickiOperator(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+			LogickiOperator(LogickiOperator const& drugi) : AST(drugi) {}
 
 			virtual void compiliraj() override {/* logicki operiraj */};
 			virtual ~LogickiOperator() {}
@@ -210,6 +239,7 @@ namespace C0Compiler
 	{
 		public:
 			BitwiseOperator(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+			BitwiseOperator(BitwiseOperator const& drugi) : AST(drugi) {}
 
 			virtual void compiliraj() override {/* bitwise operiraj */};
 			virtual ~BitwiseOperator() {}
@@ -219,6 +249,7 @@ namespace C0Compiler
 	{
 		public:
 			OperatorJednakost(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+			OperatorJednakost(OperatorJednakost const& drugi) : AST(drugi) {}
 
 			virtual void compiliraj() override {/* operiraj jednakost */};
 			virtual ~OperatorJednakost() {}
@@ -228,6 +259,7 @@ namespace C0Compiler
 	{
 		public:
 			OperatorUsporedbe(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+			OperatorUsporedbe(OperatorUsporedbe const& drugi) : AST(drugi) {}
 
 			virtual void compiliraj() override {/* operiraj usporedbu */};
 			virtual ~OperatorUsporedbe() {}
@@ -237,6 +269,7 @@ namespace C0Compiler
 	{
 		public:
 			BinarniOperator(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+			BinarniOperator(BinarniOperator const& drugi) : AST(drugi) {}
 
 			virtual void compiliraj() override {/* binarno operiraj */ };
 			virtual ~BinarniOperator() {}
@@ -246,6 +279,7 @@ namespace C0Compiler
 	{
 		public:
 			OperatorPridruzivanja(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+			OperatorPridruzivanja(OperatorPridruzivanja const& drugi) : AST(drugi) {}
 
 			virtual void compiliraj() override {/* pridruži */ };
 			virtual ~OperatorPridruzivanja() {}
@@ -255,6 +289,7 @@ namespace C0Compiler
 	{
 		public:
 			Alokacija(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+			Alokacija(Alokacija const& drugi) : AST(drugi) {}
 
 			virtual void compiliraj() override {/* alociraj */ };
 			virtual ~Alokacija() {}
@@ -264,6 +299,7 @@ namespace C0Compiler
 	{
 		public:
 			AlokacijaArray(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+			AlokacijaArray(AlokacijaArray const& drugi) : AST(drugi) {}
 
 			virtual void compiliraj() override {/* alociraj array */ };
 			virtual ~AlokacijaArray() {}
@@ -273,6 +309,7 @@ namespace C0Compiler
 	{
 		public:
 			Negacija(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+			Negacija(Negacija const& drugi) : AST(drugi) {}
 
 			virtual void compiliraj() override {/* negiraj */ };
 			virtual ~Negacija() {}
@@ -282,6 +319,7 @@ namespace C0Compiler
 	{
 		public:
 			Tilda(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+			Tilda(Tilda const& drugi) : AST(drugi) {}
 
 			virtual void compiliraj() override {/* iztildači */ };
 			virtual ~Tilda() {}
@@ -291,6 +329,7 @@ namespace C0Compiler
 	{
 		public:
 			Minus(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+			Minus(Minus const& drugi) : AST(drugi) {}
 
 			virtual void compiliraj() override {/* promijeni predznak */ };
 			virtual ~Minus() {}
@@ -300,6 +339,7 @@ namespace C0Compiler
 	{
 		public:
 			Dereferenciranje(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+			Dereferenciranje(Dereferenciranje const& drugi) : AST(drugi) {}
 
 			virtual void compiliraj() override {/* dereferenciraj */ };
 			virtual ~Dereferenciranje() {}
@@ -309,6 +349,7 @@ namespace C0Compiler
 	{
 		public:
 			PozivFunkcije(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+			PozivFunkcije(PozivFunkcije const& drugi) : AST(drugi) {}
 
 			virtual void compiliraj() override {/* pozovi funkciju */ };
 			virtual ~PozivFunkcije() {}
@@ -318,6 +359,7 @@ namespace C0Compiler
 	{
 		public:
 			Inkrement(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+			Inkrement(Inkrement const& drugi) : AST(drugi) {}
 
 			virtual void compiliraj() override {/* inkrementiraj */ };
 			virtual ~Inkrement() {}
@@ -327,6 +369,7 @@ namespace C0Compiler
 	{
 		public:
 			Dekrement(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+			Dekrement(Dekrement const& drugi) : AST(drugi) {}
 
 			virtual void compiliraj() override {/* dekrementiraj */ };
 			virtual ~Dekrement() {}
@@ -334,11 +377,12 @@ namespace C0Compiler
 
 	class UglateZagrade : public AST
 	{
-	public:
-		UglateZagrade(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+		public:
+			UglateZagrade(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
+			UglateZagrade(UglateZagrade const& drugi) : AST(drugi) {}
 
-		virtual void compiliraj() override {/* dohvati što je u uglatim zagradama */ };
-		virtual ~UglateZagrade() {}
+			virtual void compiliraj() override {/* dohvati što je u uglatim zagradama */ };
+			virtual ~UglateZagrade() {}
 	};
 
 	class Leaf : public AST
@@ -348,6 +392,8 @@ namespace C0Compiler
 
 		public:
 			explicit Leaf(Token const& sadrzaj) : AST(), m_sadrzaj(sadrzaj) {}
+			Leaf(Leaf const& drugi) : AST(drugi) { m_sadrzaj = drugi.m_sadrzaj; }
+
 			operator Token() const { return m_sadrzaj; }
 
 			virtual void compiliraj() override {};		// od svih praznih overrideova, samo ovaj treba ostati prazan
@@ -361,6 +407,8 @@ namespace C0Compiler
 			using iterator = std::list<AST*>::iterator;
 
 			ASTList() : AST(){}
+			ASTList(ASTList const& drugi) : AST(drugi) {}
+			
 			void push_back(AST* novi) { dodajDijete(novi); }	// premišljam se da ostavim dodajDijete ili da napišem novu funkciju koja dodaje dijete i kao parenta mu stavi svog parenta umjesto sebe
 			virtual void compiliraj() override {/* compiliraj sve svoje elemente */};
 

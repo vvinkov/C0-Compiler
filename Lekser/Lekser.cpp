@@ -1,4 +1,5 @@
 ﻿#include "Lekser.hpp"
+#include "../Greska//Greska.hpp"
 
 namespace C0Compiler
 {
@@ -45,15 +46,10 @@ namespace C0Compiler
 	char Lekser::procitaj(char znak)
 	{
 		char procitan = citaj();
-		if (znak == procitan) return znak;
+		if (znak == procitan) 
+			return znak;
 
-		std::string opis = "neocekivan znak '";
-		opis += procitan;
-		opis += "', ocekujem '";
-		opis += znak;
-		opis += "'.";
-		lexGreska(opis);
-		exit(1);
+		throw LeksickaGreska(procitan, znak, redak, stupac);
 	}
 
 	bool Lekser::probajProcitati(char znak)
@@ -75,28 +71,26 @@ namespace C0Compiler
 		}
 		else
 		{
-			// 12.12.2018. možda bi dobro bilo imati apstraktnu klasu greška, derivirati sve greške iz nje
-			// i ovaj gadni dio s printanjem i čišćenjem riješiti u nekoj virtualnoj metodi
-			std::cerr << "Greska! Nije moguce vratiti glavu vise od jednog mjesta unazad!" << std::endl;
-			pocisti();
-			exit(1); 
+			throw Greska("Greška", redak, stupac, "buffer overflow");
 		}
 	}
 
 	void Lekser::tokeniziraj(TokenTip tip)
 	{
-		Token* token = new Token(tip, sadrzaj, redak, stupac-sadrzaj.size()+2);	// voodoo da dobijem pravi stupac gdje token počinje
+		Token* token = new Token(tip, sadrzaj, redak, stupac - sadrzaj.size() + 2);	// voodoo da dobijem pravi stupac gdje token počinje
 		m_tokeni.push_back(token);
 		sadrzaj.clear();
 	}
 
-	void Lekser::lexGreska(std::string const& opis)
-	{
-		std::cerr << "Leksicka greska! Redak " << redak << ", stupac " << stupac << ". Opis: " << opis << std::endl;
-		pocisti();
-		std::cin.get();
-		exit(1);
-	}
+	// 13.05.2019. marked for deletion, vidi Greska.hpp i Greska.cpp za novu stvar
+
+	//void Lekser::lexGreska(std::string const& opis)
+	//{
+	//	std::cerr << "Leksicka greska! Redak " << redak << ", stupac " << stupac << ". Opis: " << opis << std::endl;
+	//	pocisti();
+	//	std::cin.get();
+	//	exit(1);
+	//}
 
 	int Lekser::kleeneZvijezda(std::function<bool(char)> && uvjet)
 	{
@@ -127,11 +121,11 @@ namespace C0Compiler
 			{
 				if (znak == '\\')
 				{
-					// ako si pročitao '\', pogledaj je li sljedeći escape znak
+					// ako si pročitao '\', pogledaj je li sljedeći znak escape znak
 					sljedeci = citaj();
 					if (escapeZnakovi.find(sljedeci) == escapeZnakovi.end())
 						// ako nije, imamo problem
-						lexGreska("neispravan string");
+						throw LeksickaGreska(redak, stupac, "neispravan string");
 				}
 				else if (isprint(znak) && znak != '"')
 					// ako si pročitao znak i taj znak nije '"', još si u stringu
@@ -211,51 +205,59 @@ namespace C0Compiler
 				}
 				else if (sadrzaj == "bool")
 				{
-					// vidi komentare za int, sasvim je analogno
+					// ako si pročitao bool, možda je poslije njega '*'
 					if (probajProcitati('*'))
 						tokeniziraj(POINTER);
 
+					// ako nije, možda je "[]"
 					else if (probajProcitati('['))
 					{
 						procitaj(']');
 						tokeniziraj(ARRAY);
 					}
 					else
+						// ako nije ništa od toga, imaš obični bool
 						tokeniziraj(BOOL);
 				}
 				else if (sadrzaj == "char")
 				{
-					// vidi komentare za int, sasvim je analogno
+					// ako si pročitao char, možda je poslije njega '*'
 					if (probajProcitati('*'))
 						tokeniziraj(POINTER);
 
+					// ako nije, možda je "[]"
 					else if (probajProcitati('['))
 					{
 						procitaj(']');
 						tokeniziraj(ARRAY);
 					}
 					else
+						// ako nije ništa od toga, imaš obični char
 						tokeniziraj(CHAR);
 				}
 				else if (sadrzaj == "string")
 				{
-					// vidi komentare za int, sasvim je analogno
+					// ako si pročitao string, možda je poslije njega '*'
 					if (probajProcitati('*'))
 						tokeniziraj(POINTER);
 
+					// ako nije, možda je "[]"
 					else if (probajProcitati('['))
 					{
 						procitaj(']');
 						tokeniziraj(ARRAY);
 					}
-					else tokeniziraj(STRING);
+					else 
+						// ako nije ništa od toga, imaš obični string
+						tokeniziraj(STRING);
 				}
 				else if (sadrzaj == "void")
 				{
-					// vidi komentare za int, sasvim je analogno
+					// ako si pročitao void, možda je poslije njega '*'
 					if (probajProcitati('*'))
 						tokeniziraj(POINTER);
 
+					// ako nije, možda je "[]"
 					else if (probajProcitati('['))
 					{
 						procitaj(']');
@@ -282,12 +284,12 @@ namespace C0Compiler
 						}
 						else
 						{
-							lexGreska("nakon 0x ocekujem heksadekadsku znamenku");
+							throw LeksickaGreska(redak, stupac, "nakon 0x očekujem heksadekadsku znamenku");
 						}
 					}
 					else if (isdigit(sljedeci))
 					{
-						lexGreska("nisu dozvoljene vodece nule u dekadskom zapisu");
+						throw LeksickaGreska(redak, stupac, "nisu dozvoljene vodeće nule u dekadskom zapisu");
 					}
 					else
 					{
@@ -309,7 +311,7 @@ namespace C0Compiler
 				if (!isprint(sljedeci) && escapeSekvence.find(sljedeci) != escapeSekvence.end() && sljedeci != '\0')
 				{
 					// ako si pročitao ', a u njemu nije znak ili escape sekvenca, imaš bezvezni char literal
-					lexGreska("neispravan char literal");
+					throw LeksickaGreska(redak, stupac, "neispravan char literal");
 				}
 				else
 				{
@@ -380,7 +382,7 @@ namespace C0Compiler
 					sadrzaj.clear(); // sjetimo se PROG1: "compiler ignorira komentare". kad bih ih stvarno tokenizirao, samo bih otvorio vrata gomili false positive sintaksnih grešaka
 				}
 				else if (probajProcitati('*'))
-					// ako si pročitao "/*", onda si u blok komentaru, prebaci se u "komentar mod"
+					// ako si pročitao "/*", onda si u blok komentaru, prebaci se u "komentar mode"
 					// i sve što pročitaš šibaj u taj komentar
 					citamKomentar = true;
 					
@@ -481,11 +483,11 @@ namespace C0Compiler
 			// ako nemaš pojma što si pročitao...
 			else
 			{
-				lexGreska("Nepoznat znak " + znak);
+				throw LeksickaGreska(redak, stupac, znak);
 			}
 		} // while
 		if (citamKomentar)
-			lexGreska("Nezatvoren komentar");
+			throw LeksickaGreska(redak, stupac, "nezatvoren komentar");
 
 		tokeniziraj(KRAJ);
 		return m_tokeni;

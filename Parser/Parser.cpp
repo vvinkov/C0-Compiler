@@ -1,4 +1,5 @@
 ﻿#include "Parser.hpp"
+#include "../Greska/Greska.hpp"
 
 namespace C0Compiler
 {
@@ -33,8 +34,7 @@ namespace C0Compiler
 			return citaj();
 
 		else
-			sintaksnaGreska("Ocekujem " + tokenString[tip] + ", dobio " + tokenString[m_tokeni.front()->getTip()] + 
-				": " + m_tokeni.front()->getSadrzaj());
+			throw SintaksnaGreska(m_tokeni.front()->getRedak(), m_tokeni.front()->getStupac(), *m_tokeni.front(), tip);
 	}
 
 	bool Parser::sljedeci(TokenTip tip)
@@ -52,18 +52,17 @@ namespace C0Compiler
 		}
 		else
 		{
-			std::cerr << "Greska! Nije moguce vratiti se vise od jednog tokena unazad! " << std::endl;
-			exit(1);
+			throw Greska("Greška", m_tokeni.front()->getRedak(), m_tokeni.front()->getStupac(), "buffer overflow");
 		}
 	}
 
-	void Parser::sintaksnaGreska(std::string const& opis)
+	/*void Parser::sintaksnaGreska(std::string const& opis)
 	{
 		std::cerr << "Sintaksna greska! Redak " << zadnji->getRedak() << ", stupac " << zadnji->getStupac() << ". Opis: " << opis << std::endl;
 		pocisti();
 		std::cin.get();
 		exit(1);
-	}
+	}*/
 
 	void Parser::parsiraj()
 	{
@@ -89,9 +88,7 @@ namespace C0Compiler
 		}
 		else
 		{
-			sintaksnaGreska("Ocekujem " + tokenString[STRLIT] +
-							", dobio " + tokenString[zadnji->getTip()] +
-							": " + zadnji->getSadrzaj());
+			throw SintaksnaGreska(zadnji->getRedak(), zadnji->getStupac(), *zadnji, STRLIT);
 		}
 	}
 
@@ -121,11 +118,7 @@ namespace C0Compiler
 					|| zadnji->isOfType(STRING)
 					|| zadnji->isOfType(CHAR)))
 				{
-					sintaksnaGreska("Nepoznat tip " + tokenString[zadnji->getTip()] +
-									", ocekujem " + tokenString[INT] +
-									", " + tokenString[BOOL] +
-									", " + tokenString[STRING] +
-									", ili " + tokenString[CHAR]);
+					throw SintaksnaGreska(zadnji->getRedak(), zadnji->getStupac(), *zadnji, { INT, BOOL, STRING, CHAR });
 				}
 				// else zapamti tip i pročitaj ime varijable
 				Leaf* tip = new Leaf(*zadnji);
@@ -154,12 +147,7 @@ namespace C0Compiler
 		}
 		else
 		{
-			sintaksnaGreska("Nepoznat tip " + tokenString[zadnji->getTip()] +
-							", ocekujem " + tokenString[INT] +
-							", " + tokenString[BOOL] +
-							", " + tokenString[STRING] +
-							", " + tokenString[CHAR] +
-							", ili " + tokenString[VOID]);
+			throw SintaksnaGreska(zadnji->getRedak(), zadnji->getStupac(), *zadnji, { INT, BOOL, STRING, CHAR, VOID });
 		}
 	}
 
@@ -550,8 +538,7 @@ namespace C0Compiler
 				}
 				default:
 				{
-					vrati();
-					sintaksnaGreska("Neocekivan token : " + tokenString[zadnji.getTip] + "(" + zadnji.getSadrzaj() + ")");
+					throw SintaksnaGreska(zadnji.getRedak(), zadnji.getStupac(), zadnji, { INT, BOOL, STRING, CHAR });
 				}
 			}
 		}
@@ -581,8 +568,7 @@ namespace C0Compiler
 				}
 				default:
 				{
-					vrati();
-					sintaksnaGreska("Neocekivan token : " + tokenString[zadnji.getTip] + "(" + zadnji.getSadrzaj() + ")");
+					throw SintaksnaGreska(zadnji.getRedak(), zadnji.getStupac(), zadnji, { INT, BOOL, STRING, CHAR });
 				}
 			}
 		}
@@ -697,6 +683,6 @@ namespace C0Compiler
 			case NUL:
 				return new Leaf(zadnji);
 		}
-		return nullptr;	// ili još bolje, izbaci grešku
+		throw SintaksnaGreska(zadnji.getRedak(), zadnji.getStupac, "neparsiran token");
 	}
 }

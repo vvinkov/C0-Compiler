@@ -87,7 +87,7 @@
 // KRAJ			|				|	kraj datoteke
 
 #include <string>
-#include <map>
+#include <vector>
 
 namespace C0Compiler
 {
@@ -130,7 +130,17 @@ namespace C0Compiler
 		USE, PRAZNO, POCETAK, KRAJ
 	};
 
-	std::map<TokenTip, std::string> tokenString;
+	// popis svih tipova tokena tako da ih mogu lakše ispisivati
+	std::vector<std::string> tokenString = {"OOTV", "OZATV", "UOTV", "UZATV", "VOTV", "VZATV", 
+		"ZAREZ", "TZAREZ", "USKL", "TILDA", "MINUS", "ZVJ", "TOCKA", "STRELICA", "SLASH", 
+		"MOD", "PLUS", "LSHIFT", "RSHIFT", "LESS", "LESSEQ", "GRT", "GRTEQ", "EQ", "NEQ", 
+		"BITAND", "BITXOR", "BITOR", "LAND", "LOR", "CONDQ", "DTOCKA", "PLUSEQ", "MINUSEQ", 
+		"ZVJEQ", "SLASHEQ", "MODEQ", "LSHIFTEQ", "RSHIFTEQ", "ASSIGN", "BANDEQ", "BXOREQ", 
+		"BOREQ", "DECR", "INCR",	"BACKSP", "ALERT", "QUOTE", "DQUOTE", "BSLASH", "COMMENT", 
+		"IF", "ELSE", "WHILE", "FOR", "ASSERT", "ERROR", "ALLOC", "ALLOCARRAY", "IDENTIFIER", 
+		"DEKADSKI", "HEKSADEKADSKI", "CHRLIT", "STRLIT", "BOOLEAN", "NUL", "BREAK", "CONTINUE", 
+		"RETURN", "INT", "BOOL", "CHAR", "STRING", "VOID", "POINTER", "ARRAY",	"USE", "PRAZNO", 
+		"POCETAK", "KRAJ"};
 
 	// Općenita klasa za token
 	class Token

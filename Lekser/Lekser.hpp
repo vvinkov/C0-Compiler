@@ -8,6 +8,7 @@
 #include <set>
 #include <iostream>
 #include "../Token/Token.hpp"
+#include "../Greska/Greska.hpp"
 
 namespace C0Compiler
 {

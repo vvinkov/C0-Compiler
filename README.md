@@ -5,23 +5,20 @@
 cijeli
 ### Parser
 cijeli
-### Optimizer
-ništa
+### AST memory management
+cijeli, ograničeno testiran
+### Error reporting subsystem
+cijeli, osim za compiler dio
 ### Compiler
+ništa
+### Optimizer
 ništa
 
 
 ## To do
-### Lekser
-ništa
-### Parser 
-ništa
-### AST memory management
-copy konstruktor, move konstruktor, operatori pridruživanja i destruktori u svim AST-ovima
-### Optimizer
-sve
 ### Compiler
 sve
+### Optimizer
+sve 
 ### Exceptioni
 ### Pointerska aritmetika
-### Ljepši error reporting subsystem
