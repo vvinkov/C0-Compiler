@@ -1,10 +1,9 @@
 ﻿#ifndef PARSER_HPP
 #define PARSER_HPP
 
-// premišljam se da ovdje napišem BKG za C0 ili da uputim ljude na dokumentaciju
-
 #include <deque>
 #include <iostream>
+#include <memory>
 #include "../Token/Token.hpp"
 #include "../AST/AST.hpp"
 
@@ -14,42 +13,47 @@ namespace C0Compiler
 	class Parser
 	{
 		private:
-			std::deque<Token*> m_tokeni;					// tokeni koje je lekser konstruirao
-			Token* zadnji;									// ovdje držim zadnji pročitani token 
-			//AST* m_korijen;									// AST-ovi koje je parser konstruirao
-			bool vracanje_ok;								// flag, dozvoljavamo li vraćanje glave za čitanje nazad
+			std::deque<std::shared_ptr<Token>> m_tokeni;	// tokeni koje je lekser konstruirao
+			std::shared_ptr<Token> m_zadnji;				// ovdje držim zadnji pročitani token 
+			std::shared_ptr<AST> m_korijen;					// AST-ovi koje je parser konstruirao
+			bool m_vracanjeOk;								// flag, dozvoljavamo li vraćanje glave za čitanje nazad
 		
-			void pocisti();									// počisti memoriju alociranu za tokene, AST i "zadnji"
+			//void pocisti();									// počisti memoriju alociranu za tokene, AST i "zadnji"
 			
-			AST* parseUse();								// parsiraj #use direktivu
-			AST* parseFunction();							// parsiraj funkciju (deklaraciju ili definiciju)
-			AST* parseStatement();
-			AST* parseSimple();
-			AST* parseExpression();
-			AST* parseLogicki();
-			AST* parseBitwise();
-			AST* parseEquality();
-			AST* parseComparison();
-			AST* parseShifts();
-			AST* parseAdd();
-			AST* parseFactor();
-			AST* parseAssign();
-			AST* parseAllocate();
-			AST* parseAllocArray();
-			AST* parseUnary();
-			AST* parseBase();
+			std::deque<std::shared_ptr<Token>> parseUse();	// parsiraj #use direktivu
+			std::shared_ptr<AST> parseGlobal();				// parsiraj typedef, funkciju ili strukturu (deklaraciju ili definiciju)
+			std::shared_ptr<AST> parseTip();
+			std::shared_ptr<AST> parseStatement();
+			std::shared_ptr<AST> parseSimple();
+			std::shared_ptr<AST> parseLValue();
+			std::shared_ptr<AST> parseExpression();
+			std::shared_ptr<AST> parseLogicki();
+			std::shared_ptr<AST> parseBitwise();
+			std::shared_ptr<AST> parseEquality();
+			std::shared_ptr<AST> parseComparison();
+			std::shared_ptr<AST> parseShifts();
+			std::shared_ptr<AST> parseAdd();
+			std::shared_ptr<AST> parseFactor();
+			std::shared_ptr<AST> parseAssign();
+			std::shared_ptr<AST> parseAllocate();
+			std::shared_ptr<AST> parseAllocArray();
+			std::shared_ptr<AST> parseStrelica();
+			std::shared_ptr<AST> parseTocka();
+			std::shared_ptr<AST> parseUnary();
+			std::shared_ptr<AST> parseBase();
+
+			friend std::deque<std::shared_ptr<Token>> UseDirektiva::izvrsi(Parser&); // use direktiva treba moći čačkati po privatnim dijelovima parsera
 
 		protected:
 			Token& citaj();									// čitaj sljedeći token
 			Token& procitaj(TokenTip tip);					// čitaj sljedeći token ako je tipa 'tip', inače vrati grešku
 			bool sljedeci(TokenTip tip);					// true ako je sljedeći token tipa 'tip', inače false
 			void vrati();									// vrati se jedan token nazad
-			void sintaksnaGreska(std::string const& opis);	// prijavljuje sintaksnu grešku i zaustavlja izvršavanje programa
+			//void sintaksnaGreska(std::string const& opis);	// prijavljuje sintaksnu grešku i zaustavlja izvršavanje programa
 
 		public:
-			Parser() = delete;
-			Parser(std::deque<Token*>&& tokeni);
-			void parsiraj();								// konstruira AST-ove od tokena
+			Parser(std::deque<std::shared_ptr<Token>>&& tokeni);
+			void parsiraj();	// konstruira AST-ove od tokena
 	};
 }
 #endif

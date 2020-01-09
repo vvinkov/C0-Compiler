@@ -3,191 +3,276 @@
 
 namespace C0Compiler
 {
-	Parser::Parser(std::deque<Token*>&& tokeni) : m_tokeni(tokeni) 
+	Parser::Parser(std::deque<std::shared_ptr<Token>>&& tokeni) : m_tokeni(tokeni) 
 	{
-		vracanje_ok = false;
+		m_vracanjeOk = false;
 	}
 
-	void Parser::pocisti()
-	{
-		while (!m_tokeni.empty())
-		{
-			delete m_tokeni.front();
-			m_tokeni.front() = nullptr;
-			m_tokeni.pop_front();
-		}
+	//void Parser::pocisti()
+	//{
+	//	while (!m_tokeni.empty())
+	//	{
+	//		delete m_tokeni.front();
+	//		m_tokeni.front() = nullptr;
+	//		m_tokeni.pop_front();
+	//	}
 
-		delete zadnji;
-		zadnji = nullptr;
-	}
+	//	delete zadnji;
+	//	zadnji = nullptr;
+	//}
 
 	Token& Parser::citaj()
 	{
-		zadnji = m_tokeni.front();
+		//delete zadnji;
+		m_zadnji = m_tokeni.front();
 		m_tokeni.pop_front();
-		return *zadnji;
+		m_vracanjeOk = true;
+		return *m_zadnji;
 	}
 
 	Token& Parser::procitaj(TokenTip tip)
 	{
-		if (m_tokeni.front()->isOfType(tip))
+		if (m_tokeni.front()->OfType(tip))
 			return citaj();
 
 		else
-			throw SintaksnaGreska(m_tokeni.front()->getRedak(), m_tokeni.front()->getStupac(), *m_tokeni.front(), tip);
+			throw SintaksnaGreska(m_tokeni.front()->Redak(), m_tokeni.front()->Stupac(), *m_tokeni.front(), tip);
 	}
 
 	bool Parser::sljedeci(TokenTip tip)
 	{
-		return m_tokeni.front()->getTip() == tip;
+		return m_tokeni.front()->Tip() == tip;
 	}
 
 	void Parser::vrati()
 	{
-		if (vracanje_ok)
+		if (m_vracanjeOk)
 		{
-			vracanje_ok = false;
-			m_tokeni.push_front(zadnji);
-			zadnji = nullptr;
+			m_vracanjeOk = false;
+			m_tokeni.push_front(m_zadnji);
+			//m_zadnji = nullptr; ne znam zašto je ovo ovdje bilo, čini se bezveze
 		}
 		else
 		{
-			throw Greska("Greška", m_tokeni.front()->getRedak(), m_tokeni.front()->getStupac(), "buffer overflow");
+			throw Greska("Greška", m_tokeni.front()->Redak(), m_tokeni.front()->Stupac(), "buffer overflow");
 		}
 	}
 
-	/*void Parser::sintaksnaGreska(std::string const& opis)
-	{
-		std::cerr << "Sintaksna greska! Redak " << zadnji->getRedak() << ", stupac " << zadnji->getStupac() << ". Opis: " << opis << std::endl;
-		pocisti();
-		std::cin.get();
-		exit(1);
-	}*/
-
+	// BUDUĆI DA JE PROGRAM AST IZBAČEN, DOBRO RAZMISLI ŠTA STIŽE UMJESTO NJEGA!
 	void Parser::parsiraj()
 	{
-		Program prog;
+		//Program prog;
+		std::deque<std::shared_ptr<Token>> resultTokeni;
 
 		// prvo parsiraj use direktive
 		while (sljedeci(USE))
-			prog.dodajDijete(parseUse());	
-
-		// nakon toga stižu funkcije, koje su pretty much sve ostalo
-		while(!citaj().isOfType(KRAJ))
-			prog.dodajDijete(parseFunction());	
-	}
-
-	AST* Parser::parseUse()
-	{
-		citaj();	// USE
-		citaj();	// STRLIT, ako je sve u redu
-		if (zadnji->isOfType(STRLIT))
 		{
-			Leaf* datoteka = new Leaf(*zadnji);
-			return new UseDirektiva({ datoteka });
-		}
-		else
-		{
-			throw SintaksnaGreska(zadnji->getRedak(), zadnji->getStupac(), *zadnji, STRLIT);
-		}
-	}
+			// spremi tokene iz druge datoteke u temp deque
+			std::deque<std::shared_ptr<Token>> tempTokeni = std::move(parseUse());
 
-	AST* Parser::parseFunction()
-	{
-		// 21.12.2018. možda bi bilo dobro dodati pointere i arraye kao povratne vrijednosti
-		if (zadnji->isOfType(INT)
-			|| zadnji->isOfType(BOOL)
-			|| zadnji->isOfType(STRING)
-			|| zadnji->isOfType(CHAR)
-			|| zadnji->isOfType(VOID))
-		{
-			// ako si pročitao INT, BOOL, STRING, CHAR ili VOID, 
-			// imaš legalnu povratnu vrijednost funkcije
-			ASTList* argumenti = new ASTList;
-
-			Leaf* povratniTip = new Leaf(*zadnji);
-			Leaf* ime = new Leaf(procitaj(IDENTIFIER));
-
-			procitaj(OOTV);
-			while (!sljedeci(OZATV))
+			// i appendaj ih u result deque. želimo da zadrže isti poredak.
+			for (std::deque<std::shared_ptr<Token>>::iterator it = tempTokeni.begin(); it != tempTokeni.end(); ++it)
 			{
-				citaj();
-				// 21.12.2018. možda bi bilo dobro dodati pointere i arraye kao parametre
-				if (!(zadnji->isOfType(INT)
-					|| zadnji->isOfType(BOOL)
-					|| zadnji->isOfType(STRING)
-					|| zadnji->isOfType(CHAR)))
+				resultTokeni.push_back(*it);
+			}
+		}
+
+		// nakon svih use direktiva, njihove tokene prependamo u glavni deque obrnutim redom, opet, da zadrže poredak
+		for (std::deque<std::shared_ptr<Token>>::reverse_iterator rit = resultTokeni.rbegin(); rit != resultTokeni.rend(); ++rit)
+		{
+			m_tokeni.push_front(*rit);
+		}
+
+		// nakon toga stižu globalne deklaracije i definicije
+		//while(!citaj().OfType(KRAJ))
+		//	prog.dodajDijete(parseGlobal());	
+	}
+
+	std::deque<std::shared_ptr<Token>> Parser::parseUse()
+	{
+		citaj();			// USE
+		procitaj(STRLIT);	// STRLIT, ako je sve u redu
+		std::shared_ptr<Leaf> datoteka = std::make_shared<Leaf>(*m_zadnji);
+		std::shared_ptr<UseDirektiva> useDir(new UseDirektiva(m_zadnji->Redak(), m_zadnji->Stupac(), { datoteka }));
+		return useDir->izvrsi(*this);
+	}
+
+	std::shared_ptr<AST> Parser::parseGlobal()
+	{	
+		citaj();
+		int redak = m_zadnji->Redak();
+		int stupac = m_zadnji->Stupac();
+
+		switch (m_zadnji->Tip())
+		{
+			case STRUCT:
+			{
+				std::shared_ptr<Leaf> ime(new Leaf(procitaj(IDENTIFIER)));	// ime strukture
+
+				//ako je sljedeći točkazarez, još nemaš definiciju strukture, nego samo deklaraciju.
+				if (sljedeci(TZAREZ))
 				{
-					throw SintaksnaGreska(zadnji->getRedak(), zadnji->getStupac(), *zadnji, { INT, BOOL, STRING, CHAR });
+					return std::shared_ptr<DeklaracijaStrukture>(new DeklaracijaStrukture(redak, stupac, { ime }));
 				}
-				// else zapamti tip i pročitaj ime varijable
-				Leaf* tip = new Leaf(*zadnji);
-				Leaf* ime = new Leaf(procitaj(IDENTIFIER));
-				
-				if (!sljedeci(OZATV))
-					procitaj(ZAREZ);
+				else
+				{
+					// ako ne slijedi točkazarez, onda mora slijediti otvorena vitičasta zagrada
+					procitaj(VOTV);
 
-				argumenti->push_back(new Varijabla({ tip, ime }));
+					std::shared_ptr<ASTList> fields(new ASTList(redak, stupac));
+					while (!sljedeci(VZATV))
+					{
+						// else zapamti tip i pročitaj ime varijable
+						std::shared_ptr<Tip> tip = std::dynamic_pointer_cast<Tip>(parseTip());
+						std::shared_ptr<Leaf> ime(new Leaf(procitaj(IDENTIFIER)));
+
+						if (!sljedeci(VZATV))
+							procitaj(TZAREZ);
+
+						// LLVM ne dozvoljava "prave" deklaracije varijabli u strukturama, nego ga samo zanimaju njihovi tipovi.
+						// zato u fields spremam tip i ime umjesto da konstruiram AST DeklaracijaVarijable
+						fields->push_back(tip);
+						fields->push_back(ime);
+
+						return std::shared_ptr<AST>(new DefinicijaStrukture(m_zadnji->Redak(), m_zadnji->Stupac(), { ime, fields }));
+					}
+
+					procitaj(VZATV);
+					procitaj(TZAREZ);
+				}
+				break;
 			}
 
-			if(sljedeci(TZAREZ))
+			case TYPEDEF:
 			{
-				// ako je poslije deklaracije funkcije točkazarez, onda još nema defniciju.
-				// pročitaj ga i pusti deklaraciju funkcije da radi svoje
-				procitaj(TZAREZ);
-				return new DeklaracijaFunkcije({ povratniTip, ime, argumenti });
+				std::shared_ptr<Tip> tip = std::dynamic_pointer_cast<Tip>(parseTip());
+				std::shared_ptr<Leaf> alias(new Leaf(procitaj(IDENTIFIER)));
+				return std::shared_ptr<AST>(new TypeDef(redak, stupac, { tip, alias }));
 			}
-			// else, funkcija ima i tijelo - idemo ga parsirati
-			procitaj(VOTV);
-			ASTList* tijelo = new ASTList;
-			while (!sljedeci(VZATV))
-				tijelo->push_back(parseStatement());
 
-			return new DefinicijaFunkcije({ povratniTip, ime, argumenti, tijelo });
-		}
-		else
-		{
-			throw SintaksnaGreska(zadnji->getRedak(), zadnji->getStupac(), *zadnji, { INT, BOOL, STRING, CHAR, VOID });
+			// ako u globalnom dosegu imamo nešto što nije ni deklaracija/definicija
+			// strukture ni typedef, onda to mora biti deklaracija/definicija funkcije.
+			// dakle, sljedeći token je tip (povratni tip funkcije).
+			default:
+			{
+				vrati(); // ovdje moramo vratiti zato što parseTip čita token; 
+						 // ne želimo preskočiti token koji predstavlja povratni tip funkcije
+
+				std::shared_ptr<ASTList> argumentiFunkcije(new ASTList(redak, stupac));
+				std::shared_ptr<Tip> povratniTip = std::dynamic_pointer_cast<Tip>(parseTip());
+				std::shared_ptr<Leaf> imeFunkcije(new Leaf(procitaj(IDENTIFIER)));
+
+				// nakon imena funkcije slijede njeni argumenti
+				procitaj(OOTV);
+				while (!sljedeci(OZATV))
+				{
+					// parsiramo tip i ime argumenta
+					std::shared_ptr<Tip> tipArgumenta = std::dynamic_pointer_cast<Tip>(parseTip());
+					std::shared_ptr<Leaf> imeArgumenta(new Leaf(procitaj(IDENTIFIER)));
+
+					// ako nije zadnji, sljedeći znak je zarez
+					if (!sljedeci(OZATV))
+						procitaj(ZAREZ);
+
+					// LLVM ne dozvoljava "prave" deklaracije varijabli među argumentima funkcije, nego ga samo zanimaju njihovi tipovi.
+					// zato u argumente spremam tipove i imena umjesto AST-ova DeklaracijaVarijable
+					argumentiFunkcije->push_back(tipArgumenta);
+					argumentiFunkcije->push_back(imeArgumenta);
+				}
+
+				if (sljedeci(TZAREZ))
+				{
+					// ako je poslije deklaracije funkcije točkazarez, onda još nema defniciju.
+					// pročitaj ga i pusti deklaraciju funkcije da radi svoje
+					procitaj(TZAREZ);
+					return std::shared_ptr<AST>(new DeklaracijaFunkcije(redak, stupac, { povratniTip, imeFunkcije, argumentiFunkcije }));
+				}
+
+				// else, funkcija ima i tijelo - idemo ga parsirati
+				procitaj(VOTV);
+				std::shared_ptr<ASTList> tijelo(new ASTList(m_zadnji->Redak(), m_zadnji->Stupac()));
+				while (!sljedeci(VZATV))
+					tijelo->push_back(parseStatement());
+
+				return std::shared_ptr<AST>(new DefinicijaFunkcije(redak, stupac, { povratniTip, imeFunkcije, argumentiFunkcije, tijelo }));
+			}
 		}
 	}
 
-	AST* Parser::parseStatement()
+	std::shared_ptr<AST> Parser::parseTip()
 	{
-		Token zadnji = citaj();
-		switch(zadnji.getTip())
+		citaj();
+		int redak = m_zadnji->Redak();
+		int stupac = m_zadnji->Stupac();
+		switch (m_zadnji->Tip())
+		{
+			case STRUCT:
+			{
+				std::shared_ptr<Leaf> doslovnoStruct(new Leaf(*m_zadnji));	// jer doslovno piše "struct"
+				std::shared_ptr<Leaf> imeStrukture(new Leaf(procitaj(IDENTIFIER)));
+				return std::shared_ptr<AST>(new Tip(redak, stupac, { doslovnoStruct, imeStrukture }));
+			}
+			case INT:
+			case BOOL:
+			case STRING:
+			case CHAR:
+			case VOID:
+			case INTPOINT:
+			case BOOLPOINT:
+			case STRINGPOINT:
+			case CHARPOINT:
+			case INTARRAY:
+			case BOOLARRAY:
+			case STRINGARRAY:
+			case CHARARRAY:
+			{
+				std::shared_ptr<Leaf> doslovnoTajTip(new Leaf(*m_zadnji));	// jer u tokenu doslovno piše taj tip (int, bool, string...)
+				return std::shared_ptr<AST>(new Tip(redak, stupac, { doslovnoTajTip }));
+			}
+			default:
+				throw SintaksnaGreska(m_zadnji->Redak(), m_zadnji->Stupac(), *m_zadnji, { INT, BOOL, STRING, CHAR, INTPOINT, BOOLPOINT, STRINGPOINT, CHARPOINT, INTARRAY, BOOLARRAY, STRINGARRAY, CHARARRAY, STRUCT });
+		}
+	}
+
+	std::shared_ptr<AST> Parser::parseStatement()
+	{
+		citaj();
+		int redak = m_zadnji->Redak();
+		int stupac = m_zadnji->Stupac();
+		switch(m_zadnji->Tip())
 		{
 			case IF:
 			{
 				procitaj(OOTV);
-				AST* uvjet = parseExpression();
+				std::shared_ptr<AST> uvjet = parseExpression();
 				procitaj(OZATV);
-				AST* tijeloIf = parseStatement();
+				std::shared_ptr<AST> tijeloIf = parseStatement();
 			
 				if (sljedeci(ELSE))
 				{
 					procitaj(ELSE);
-					AST* tijeloElse = parseStatement();
-					return new IfElse({ uvjet, tijeloIf, tijeloElse });
+					std::shared_ptr<AST> tijeloElse = parseStatement();
+					return std::shared_ptr<AST>(new IfElse(redak, stupac, { uvjet, tijeloIf, tijeloElse }));
 				}
 				else
-					return new If({ uvjet, tijeloIf });
+					return std::shared_ptr<AST>(new IfElse(redak, stupac, { uvjet, tijeloIf, std::shared_ptr<AST>(nullptr) }));
 			}
 
 			case WHILE:
 			{
 				procitaj(OOTV);
-				AST* uvjet = parseExpression();
+				std::shared_ptr<AST> uvjet = parseExpression();
 				procitaj(OZATV);
-				AST* tijelo = parseStatement();
-				return new While({uvjet, tijelo});
+				std::shared_ptr<AST> tijelo = parseStatement();
+				return std::shared_ptr<AST>(new While(redak, stupac, {uvjet, tijelo}));
 			}
 
 			case FOR:
 			{
 				procitaj(OOTV);
-				AST* deklaracija;
-				AST* uvjet;
-				AST* inkrement;
+				std::shared_ptr<AST> deklaracija;
+				std::shared_ptr<AST> uvjet;
+				std::shared_ptr<AST> inkrement;
 				if(!sljedeci(TZAREZ))
 					deklaracija = parseSimple();
 
@@ -197,56 +282,47 @@ namespace C0Compiler
 
 				procitaj(TZAREZ);
 				if(!sljedeci(TZAREZ))
-					uvjet = parseSimple();
+					inkrement = parseSimple();
 
 				procitaj(OZATV);
-				AST* tijelo = parseStatement();
-				return new For({deklaracija, uvjet, inkrement, tijelo});
+				std::shared_ptr<AST> tijelo = parseStatement();
+				return std::shared_ptr<AST>(new For(redak, stupac, {deklaracija, uvjet, tijelo, inkrement}));
 			}
 
 			case RETURN:
 			{
-				AST* povratnaVrijednost;
+				std::shared_ptr<AST> povratnaVrijednost;
 				if(!sljedeci(TZAREZ))
 					povratnaVrijednost = parseExpression();
 
 				procitaj(TZAREZ);
-				return new Return({povratnaVrijednost});
+				return std::shared_ptr<AST>(new Return(redak, stupac, {povratnaVrijednost}));
 			}
 
 			case BREAK:
 			{
 				procitaj(TZAREZ);
-				return new Break;
+				return std::shared_ptr<AST>(new Break(redak, stupac));
 			}
 
 			case CONTINUE:
 			{
 				procitaj(TZAREZ);
-				return new Continue;
+				return std::shared_ptr<AST>(new Continue(redak, stupac));
 			}
 
 			case ASSERT:
 			{
 				procitaj(OOTV);
-				AST* izraz = parseExpression();
+				std::shared_ptr<AST> izraz = parseExpression();
 				procitaj(OZATV);
 				procitaj(TZAREZ);
-				return new Assert({izraz});
-			}
-
-			case ERROR:
-			{
-				procitaj(OOTV);
-				AST* izraz = parseExpression();
-				procitaj(OZATV);
-				procitaj(TZAREZ);
-				return new Error({izraz});
+				return std::shared_ptr<AST>(new Assert(redak, stupac, {izraz}));
 			}
 
 			case VOTV:
 			{
-				ASTList* blok = new ASTList;
+				std::shared_ptr<ASTList> blok(new ASTList(redak, stupac));
 				while(!sljedeci(VZATV))
 					blok->push_back(parseStatement());
 
@@ -255,53 +331,50 @@ namespace C0Compiler
 			}
 
 			default:
-				AST* simple = parseSimple();
+				std::shared_ptr<AST> simple = parseSimple();
 				procitaj(TZAREZ);
 				return simple;
 		}
 	}
 
-	AST* Parser::parseSimple()
+	std::shared_ptr<AST> Parser::parseSimple()
 	{
-		Token zadnji = citaj();
-		switch (zadnji.getTip())
+		try
 		{
-			case INT:
-			case BOOL:
-			case STRING:
-			case CHAR:
-			case POINTER:
-			case ARRAY:
+			std::shared_ptr<Tip> tip = std::dynamic_pointer_cast<Tip>(parseTip());
+			std::shared_ptr<Leaf> ime(new Leaf(procitaj(IDENTIFIER)));
+			if (sljedeci(ASSIGN))
 			{
-				Leaf* tip = new Leaf(zadnji);
-				Leaf* ime = new Leaf(procitaj(IDENTIFIER));
-				AST* varijabla = new Varijabla({tip, ime});
-				if (sljedeci(ASSIGN))
-				{
-					procitaj(ASSIGN);
-					AST* desno = parseExpression();
-					return new DeklaracijaVarijable({varijabla, desno});
-				}
-				else
-					return varijabla;
+				procitaj(ASSIGN);
+				std::shared_ptr<AST> desno = parseExpression();
+				return std::shared_ptr<AST>(new DeklaracijaVarijable(tip->Redak(), tip->Stupac(), { tip, ime, desno }));
 			}
-			default:
-				return parseExpression();
+			else
+				return std::shared_ptr<AST>(new DeklaracijaVarijable(tip->Redak(), tip->Stupac(), { tip, ime }));
+		}
+		catch(SintaksnaGreska const& e) 
+		{
+			// ako ovdje parseTip ne uspije, ne želimo da baci sintaksnu grešku, jer možda ovdje uopće
+			// ne treba biti tip. ako ne uspijemo parsirati tip, probamo expression
+			return parseExpression();
 		}
 	}
 
-	AST* Parser::parseExpression()
+	std::shared_ptr<AST> Parser::parseExpression()
 	{
-		AST* trenutni = parseLogicki();
+		std::shared_ptr<AST> trenutni = parseLogicki();
 
 		while (true)
 		{
-			if (citaj().getTip() == CONDQ)
+			if (sljedeci(CONDQ))
 			{
-				AST* caseTrue = parseExpression();
+				int redak = trenutni->Redak();
+				int stupac = trenutni->Stupac();
+
+				std::shared_ptr<AST> caseTrue = parseExpression();
 				procitaj(DTOCKA);
-				AST* caseFalse = parseExpression();
-				trenutni = new TernarniOperator({trenutni, caseTrue, caseFalse});
+				std::shared_ptr<AST> caseFalse = parseExpression();
+				trenutni = std::shared_ptr<AST>(new TernarniOperator(redak, stupac, { trenutni, caseTrue, caseFalse }));
 			}
 			else
 			{
@@ -311,19 +384,19 @@ namespace C0Compiler
 		}
 	}
 
-	AST* Parser::parseLogicki()
+	std::shared_ptr<AST> Parser::parseLogicki()
 	{
-		AST* trenutni = parseBitwise();
+		std::shared_ptr<AST> trenutni = parseBitwise();
 		while (true)
 		{
-			Token& zadnji = citaj();
-			switch (zadnji.getTip())
+			citaj();
+			switch (m_zadnji->Tip())
 			{
 				case LAND:
 				case LOR:
 				{
-					Leaf* operacija = new Leaf(zadnji);
-					trenutni = new LogickiOperator({ trenutni, parseBitwise(), operacija });
+					std::shared_ptr<Leaf> operacija(new Leaf(*m_zadnji));
+					trenutni = std::shared_ptr<AST>(new LogickiOperator(operacija->Redak(), operacija->Stupac(), { trenutni, parseBitwise(), operacija }));
 					break;
 				}
 				default:
@@ -335,20 +408,20 @@ namespace C0Compiler
 		}
 	}
 
-	AST* Parser::parseBitwise()
+	std::shared_ptr<AST> Parser::parseBitwise()
 	{
-		AST* trenutni = parseEquality();
+		std::shared_ptr<AST> trenutni = parseEquality();
 		while (true)
 		{
-			Token& zadnji = citaj();
-			switch (zadnji.getTip())
+			citaj();
+			switch (m_zadnji->Tip())
 			{
 				case BITAND:
 				case BITXOR:
 				case BITOR:
 				{
-					Leaf* operacija = new Leaf(zadnji);
-					trenutni = new BitwiseOperator({ trenutni, parseEquality(), operacija });
+					std::shared_ptr<Leaf> operacija(new Leaf(*m_zadnji));
+					trenutni = std::shared_ptr<AST>(new BitovniOperator(operacija->Redak(), operacija->Stupac(), { trenutni, parseEquality(), operacija }));
 					break;
 				}
 				default:
@@ -360,19 +433,19 @@ namespace C0Compiler
 		}
 	}
 
-	AST* Parser::parseEquality()
+	std::shared_ptr<AST> Parser::parseEquality()
 	{
-		AST* trenutni = parseComparison();
+		std::shared_ptr<AST> trenutni = parseComparison();
 		while (true)
 		{
-			Token& zadnji = citaj();
-			switch (zadnji.getTip())
+			citaj();
+			switch (m_zadnji->Tip())
 			{
 				case EQ:
 				case NEQ:
 				{
-					Leaf* operacija = new Leaf(zadnji);
-					trenutni = new OperatorJednakost({ trenutni, parseComparison(), operacija });
+					std::shared_ptr<Leaf> operacija(new Leaf(*m_zadnji));
+					trenutni = std::shared_ptr<AST>(new OperatorJednakost(operacija->Redak(), operacija->Stupac(), { trenutni, parseComparison(), operacija }));
 					break;
 				}
 				default:
@@ -384,21 +457,21 @@ namespace C0Compiler
 		}
 	}
 
-	AST* Parser::parseComparison()
+	std::shared_ptr<AST> Parser::parseComparison()
 	{
-		AST* trenutni = parseShifts();
+		std::shared_ptr<AST> trenutni = parseShifts();
 		while (true)
 		{
-			Token& zadnji = citaj();
-			switch (zadnji.getTip())
+			citaj();
+			switch (m_zadnji->Tip())
 			{
 				case LESS:
 				case LESSEQ:
 				case GRT:
 				case GRTEQ:
 				{
-					Leaf* operacija = new Leaf(zadnji);
-					trenutni = new OperatorUsporedbe({ trenutni, parseShifts(), operacija });
+					std::shared_ptr<Leaf> operacija(new Leaf(*m_zadnji));
+					trenutni = std::shared_ptr<AST>(new OperatorUsporedbe(operacija->Redak(), operacija->Stupac(), { trenutni, parseShifts(), operacija }));
 					break;
 				}
 				default:
@@ -410,19 +483,19 @@ namespace C0Compiler
 		}
 	}
 
-	AST* Parser::parseShifts()
+	std::shared_ptr<AST> Parser::parseShifts()
 	{
-		AST* trenutni = parseAdd();
+		std::shared_ptr<AST> trenutni = parseAdd();
 		while (true)
 		{
-			Token& zadnji = citaj();
-			switch (zadnji.getTip())
+			citaj();
+			switch (m_zadnji->Tip())
 			{
 				case LSHIFT:
 				case RSHIFT:
 				{
-					Leaf* operacija = new Leaf(zadnji);
-					trenutni = new BinarniOperator({ trenutni, parseAdd(), operacija });
+					std::shared_ptr<Leaf> operacija(new Leaf(*m_zadnji));
+					trenutni = std::shared_ptr<AST>(new BinarniOperator(operacija->Redak(), operacija->Stupac(), { trenutni, parseAdd(), operacija }));
 					break;
 				}
 				default:
@@ -434,19 +507,19 @@ namespace C0Compiler
 		}
 	}
 
-	AST* Parser::parseAdd()
+	std::shared_ptr<AST> Parser::parseAdd()
 	{
-		AST* trenutni = parseFactor();
+		std::shared_ptr<AST> trenutni = parseFactor();
 		while (true)
 		{
-			Token& zadnji = citaj();
-			switch (zadnji.getTip())
+			citaj();
+			switch (m_zadnji->Tip())
 			{
 				case PLUS:
 				case MINUS:
 				{
-					Leaf* operacija = new Leaf(zadnji);
-					trenutni = new BinarniOperator({ trenutni, parseFactor(), operacija });
+					std::shared_ptr<Leaf> operacija(new Leaf(*m_zadnji));
+					trenutni = std::shared_ptr<AST>(new BinarniOperator(operacija->Redak(), operacija->Stupac(), { trenutni, parseFactor(), operacija }));
 					break;
 				}
 				default:
@@ -458,20 +531,21 @@ namespace C0Compiler
 		}
 	}
 
-	AST* Parser::parseFactor()
+	std::shared_ptr<AST> Parser::parseFactor()
 	{
-		AST* trenutni = parseAssign();
+		std::shared_ptr<AST> trenutni = parseAssign();
+
 		while (true)
 		{
-			Token& zadnji = citaj();
-			switch (zadnji.getTip())
+			citaj();
+			switch (m_zadnji->Tip())
 			{
 				case ZVJ:
 				case SLASH:
 				case MOD:
 				{
-					Leaf* operacija = new Leaf(zadnji);
-					trenutni = new BinarniOperator({ trenutni, parseAssign(), operacija });
+					std::shared_ptr<Leaf> operacija(new Leaf(*m_zadnji));
+					trenutni = std::shared_ptr<AST>(new BinarniOperator(operacija->Redak(), operacija->Stupac(), { trenutni, parseAssign(), operacija }));
 					break;
 				}
 				default:
@@ -483,13 +557,14 @@ namespace C0Compiler
 		}
 	}
 
-	AST* Parser::parseAssign()
+	std::shared_ptr<AST> Parser::parseAssign()
 	{
-		AST* trenutni = parseAllocate();
+		std::shared_ptr<AST> trenutni = parseAllocate();
+
 		while (true)
 		{
-			Token& zadnji = citaj();
-			switch (zadnji.getTip())
+			citaj();
+			switch (m_zadnji->Tip())
 			{
 				case PLUSEQ:
 				case MINUSEQ:
@@ -503,8 +578,8 @@ namespace C0Compiler
 				case BXOREQ:
 				case BOREQ:
 				{
-					Leaf* operacija = new Leaf(zadnji);
-					trenutni = new OperatorPridruzivanja({ trenutni, parseAllocate(), operacija });
+					std::shared_ptr<Leaf> operacija(new Leaf(*m_zadnji));
+					trenutni = std::shared_ptr<AST>(new OperatorPridruzivanja(operacija->Redak(), operacija->Stupac(), { trenutni, parseAllocate(), operacija }));
 					break;
 				}
 				default:
@@ -516,103 +591,112 @@ namespace C0Compiler
 		}
 	}
 
-	AST* Parser::parseAllocate()
+	std::shared_ptr<AST> Parser::parseAllocate()
 	{
-		AST* trenutni = parseAllocArray();
-		Token& zadnji = citaj();
-		if (zadnji.getTip() == ALLOC)
+		std::shared_ptr<AST> trenutni = parseAllocArray();
+		int redak = trenutni->Redak();
+		int stupac = trenutni->Stupac();
+		if (sljedeci(ALLOC))
 		{
+			procitaj(ALLOC);
 			procitaj(OOTV);
-			zadnji = citaj();
-			switch (zadnji.getTip())
-			{
-				case INT:
-				case BOOL:
-				case STRING:
-				case CHAR:
-				{
-					Leaf* tip = new Leaf(zadnji);
-					procitaj(OZATV);
-					trenutni = new Alokacija({ tip });
-					break;
-				}
-				default:
-				{
-					throw SintaksnaGreska(zadnji.getRedak(), zadnji.getStupac(), zadnji, { INT, BOOL, STRING, CHAR });
-				}
-			}
+			std::shared_ptr<Tip> tip = std::dynamic_pointer_cast<Tip>(parseTip());
+			procitaj(OZATV);
+			trenutni = std::shared_ptr<AST>(new Alokacija(redak, stupac, { tip }));
 		}
 		return trenutni;
 	}
 
-	AST* Parser::parseAllocArray()
+	std::shared_ptr<AST> Parser::parseAllocArray()
 	{
-		AST* trenutni = parseUnary();
-		Token& zadnji = citaj();
-		if (zadnji.getTip() == ALLOCARRAY)
+		std::shared_ptr<AST> trenutni = parseStrelica();
+		int redak = trenutni->Redak();
+		int stupac = trenutni->Stupac();
+		if (sljedeci(ALLOCARRAY))
 		{
+			procitaj(ALLOCARRAY);
 			procitaj(OOTV);
-			zadnji = citaj();
-			switch (zadnji.getTip())
-			{
-				case INT:
-				case BOOL:
-				case STRING:
-				case CHAR:
-				{
-					Leaf* tip = new Leaf(zadnji);
-					procitaj(ZAREZ);
-					AST* koliko = parseExpression();
-					procitaj(OZATV);
-					trenutni = new AlokacijaArray({ tip, koliko });
-				}
-				default:
-				{
-					throw SintaksnaGreska(zadnji.getRedak(), zadnji.getStupac(), zadnji, { INT, BOOL, STRING, CHAR });
-				}
-			}
+			std::shared_ptr<Tip> tip = std::dynamic_pointer_cast<Tip>(parseTip());
+			procitaj(ZAREZ);
+			std::shared_ptr<AST> koliko = parseExpression();
+			procitaj(OZATV);
+			trenutni = std::shared_ptr<AST>(new AlokacijaArray(redak, stupac, { tip, koliko }));
 		}
 		return trenutni;
 	}
 
-	AST* Parser::parseUnary()
+	std::shared_ptr<AST> Parser::parseStrelica()
 	{
-		Token& zadnji = citaj();
-		AST* iza;	// iza operatora, naravno
-		switch (zadnji.getTip())
+		std::shared_ptr<AST> trenutni = parseTocka();
+		while (true)
+		{
+			if (sljedeci(STRELICA))
+			{
+				procitaj(STRELICA);
+				trenutni = std::shared_ptr<AST>(new Strelica(m_zadnji->Redak(), m_zadnji->Stupac(), { trenutni, parseTocka() }));
+			}
+			else
+				return trenutni;
+		}
+	}
+
+	std::shared_ptr<AST> Parser::parseTocka()
+	{
+		std::shared_ptr<AST> trenutni = parseUnary();
+		while (true)
+		{
+			if (sljedeci(TOCKA))
+			{
+				procitaj(TOCKA);
+				trenutni = std::shared_ptr<AST>(new Tocka(m_zadnji->Redak(), m_zadnji->Stupac(), { trenutni, parseUnary() }));
+			}
+			else
+				return trenutni;
+		}
+	}
+
+	std::shared_ptr<AST> Parser::parseUnary()
+	{
+		citaj();
+		int redak = m_zadnji->Redak();
+		int stupac = m_zadnji->Stupac();
+		std::shared_ptr<AST> iza;	// iza operatora, naravno
+		switch (m_zadnji->Tip())
 		{
 			case USKL:
 			{
 				iza = parseExpression();
-				return new Negacija({ iza });
+				return std::shared_ptr<AST>(new Negacija(redak, stupac, { iza }));
 			}
 			case TILDA:
 			{
 				iza = parseExpression();
-				return new Tilda({ iza });
+				return std::shared_ptr<AST>(new Tilda(redak, stupac, { iza }));
 			}
 			case MINUS:
 			{
 				iza = parseExpression();
-				return new Minus({ iza });
+				return std::shared_ptr<AST>(new Minus(redak, stupac, { iza }));
 			}
 			case ZVJ:
 			{
 				iza = parseBase();
-				return new Dereferenciranje({ iza });
+				return std::shared_ptr<AST>(new Dereferenciranje(redak, stupac, { iza }));
 			}
 		}
 		return parseBase();
 	}
 
-	AST* Parser::parseBase()
+	std::shared_ptr<AST> Parser::parseBase()
 	{
-		Token& zadnji = citaj();
-		switch (zadnji.getTip())
+		citaj();
+		int redak = m_zadnji->Redak();
+		int stupac = m_zadnji->Stupac();
+		switch (m_zadnji->Tip())
 		{
 			case OOTV:
 			{
-				AST* uZagradi = parseExpression();
+				std::shared_ptr<AST> uZagradi = parseExpression();
 				procitaj(OZATV);
 				return uZagradi;
 			}
@@ -620,37 +704,38 @@ namespace C0Compiler
 			{
 				// može biti identifier varijable ili funkcije
 				// ako se radi o funkciji, mora imati zagrade nakon sebe
-				Leaf* ime = new Leaf(zadnji);
-				zadnji = citaj();
-				switch (zadnji.getTip())
+				std::shared_ptr<Leaf> ime(new Leaf(*m_zadnji));
+				std::shared_ptr<Varijabla> varijabla(new Varijabla(redak, stupac, { ime }));
+				citaj();
+				switch (m_zadnji->Tip())
 				{
 					case OOTV:
 					{
-						ASTList* argumenti = new ASTList;
+						std::shared_ptr<ASTList> argumenti(new ASTList(m_zadnji->Redak(), m_zadnji->Stupac()));
 						while (!sljedeci(OZATV))
 						{
-							AST* imeVarijable = parseExpression();
+							std::shared_ptr<AST> imeVarijable = parseExpression();
 							if (!sljedeci(OZATV))
 								procitaj(ZAREZ);
 
 							argumenti->push_back(imeVarijable);
 						}
 						procitaj(OZATV);
-						return new PozivFunkcije({ ime, argumenti });
+						return std::shared_ptr<AST>(new PozivFunkcije(redak, stupac, { ime, argumenti }));
 					}
 
 					case INCR:
 					case DECR:
 					{
-						AST* trenutni = ime;
+						std::shared_ptr<AST> trenutni = ime;
 						while (true)
 						{
-							zadnji = citaj();
-							if (zadnji.getTip() == INCR)
-								trenutni = new Inkrement({ ime });
+							citaj();
+							if (m_zadnji->Tip() == INCR)
+								trenutni = std::shared_ptr<AST>(new Inkrement(redak, stupac, { varijabla }));
 							
-							else if(zadnji.getTip() == DECR)
-								trenutni = new Dekrement({ ime });
+							else if(m_zadnji->Tip() == DECR)
+								trenutni = std::shared_ptr<AST>(new Dekrement(redak, stupac, { varijabla }));
 
 							else
 							{
@@ -663,26 +748,31 @@ namespace C0Compiler
 
 					case UOTV:
 					{
-						AST* uZagradi = parseExpression();
+						std::shared_ptr<AST> uZagradi = parseExpression();
 						procitaj(UZATV);
-						return new UglateZagrade({ ime, uZagradi });
+						return std::shared_ptr<AST>(new UglateZagrade(redak, stupac, { varijabla, uZagradi }));
 					}
 
 					default:
 					{
 						vrati();
-						return ime;
+						return varijabla;
 					}
 				}
 			}
+
 			case DEKADSKI:
 			case HEKSADEKADSKI:
+				return std::shared_ptr<AST>(new BrojLiteral(*m_zadnji));
 			case STRLIT:
+				return std::shared_ptr<AST>(new StringLiteral(*m_zadnji));
 			case CHRLIT:
+				return std::shared_ptr<AST>(new CharLiteral(*m_zadnji));
 			case BOOLEAN:
+				return std::shared_ptr<AST>(new BoolLiteral(*m_zadnji));
 			case NUL:
-				return new Leaf(zadnji);
+				return std::shared_ptr<AST>(new Leaf(*m_zadnji));
 		}
-		throw SintaksnaGreska(zadnji.getRedak(), zadnji.getStupac, "neparsiran token");
+		throw SintaksnaGreska(m_zadnji->Redak(), m_zadnji->Stupac(), "neparsiran token");
 	}
 }

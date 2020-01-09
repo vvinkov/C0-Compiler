@@ -1,1 +1,7 @@
 test.c0
+LLVM/lib/*
+LLVM/lib
+LLVM/llvm-c/*
+LLVM/llvm-c
+LLVM
+LLVM/*

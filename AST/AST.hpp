@@ -3,417 +3,645 @@
 
 #include <list>
 #include <string>
+#include <fstream>
 #include <initializer_list>
+#include <memory>
+#include <deque>
 
 #include "../Token/Token.hpp"
+#include "../LLVM-Compatibility/LLVM-Compatibility.hpp"
+
+#include "../LLVM/include/llvm/IR/Value.h"
+//#include "../LLVM/include/llvm/IR/LLVMContext.h"
+#include "../LLVM/include/llvm/IR/Function.h"
+#include "../LLVM/include/llvm/IR/Module.h"
+#include "../LLVM/include/llvm/IR/IRBuilder.h"
+#include "../LLVM/include/llvm/IR/Verifier.h"
+#include "../LLVM/include/llvm/IR/Instructions.h"
+
+#include "../LLVM/include/llvm-c/Core.h"
 
 namespace C0Compiler
 {
-
+	class Parser;
+	class ASTList;
 	// opća klasa za AST, da ih mogu sve pobacati u jedan container
 
-	// 26.12.2018. deque ne prikazuje stablastu strukturu dovoljno dobro, sad je svaki AST čvor u 
-	// jednom ogromnom globalnom AST i zna tko mu je roditelj, tko djeca i tko je veliki korijen.
+	// svaki AST je čvor u 
+	// jednom ogromnom globalnom AST i zna tko mu je roditelj, tko djeca i tko je korijen.
 	// zasad koristim list jer mi ne treba ništa jače
 
-	class AST
+	class AST : public std::enable_shared_from_this<AST>
 	{
 		private:
-			static AST* korijen;				// veliki, glavni korijen
-			static std::list<AST*> sirocad;		// AST-ovi bez roditelja
-			AST* m_roditelj;					// pointer na roditelja, nullptr ako se radi o korijenu (program)
+			static std::shared_ptr<AST> korijen;				// veliki, glavni korijen
+			static std::list<std::shared_ptr<AST>> sirocad;		// AST-ovi bez roditelja
+
+
+			int m_redak;						// redak prvog tokena u AST-u
+			int m_stupac;						// stupac prvog tokena u AST-u
+			std::shared_ptr<AST> m_roditelj;	// pointer na roditelja, nullptr ako se radi o korijenu (program)
+
 			
-			void ucitajDjecu(std::list<AST*> const& djeca);
+			void ucitajDjecu(std::list<std::shared_ptr<AST>> const& djeca);
 			void pobrisiDjecu();
 
 		protected:
-			std::list<AST*> m_djeca;			// lista djece, pointeri su zato da izbjegnem slicing
+			static LLVMCompatibility::Context context;
+			//static llvm::Function* main;		// pointer na kopmajliranu main funkciju (null dok se ne compilira)
+			//static std::unique_ptr<llvm::Module> modul;
 
-			AST() : m_djeca() { sirocad.push_back(this); }
-			AST(AST const& drugi) { ucitajDjecu(drugi.m_djeca); }
+			AST(int redak, int stupac);
+			AST(AST const& drugi);
 			AST(AST&& drugi);
-			AST(std::list<AST*>&& djeca);
+			AST(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
 
 		public:
-			void dodajDijete(AST* dijete);		// dodaje granu u AST (čitaj: push_back u listu djece)
-			void setKorijen(AST* novi_korijen) { korijen = novi_korijen; }
-			void setRoditelj(AST* roditelj);
+			std::list<std::shared_ptr<AST>> m_djeca;			// lista djece, pointeri su zato da izbjegnem slicing
+			
+			void dodajDijete(std::shared_ptr<AST> dijete);		// dodaje granu u AST (čitaj: push_back u listu djece)
+			void setKorijen(std::shared_ptr<AST> novi_korijen) { korijen = novi_korijen; }
+			void setRoditelj(std::shared_ptr<AST> roditelj);
 
-			AST* getRoditelj() { return m_roditelj; }
+			std::shared_ptr<AST> getRoditelj() { return m_roditelj; }
+			int Redak() { return m_redak; }
+			int Stupac() { return m_stupac; }
+
 			bool isRoot() { return m_roditelj == nullptr; }
 
 			AST& operator=(AST const& drugi);
 			AST&& operator=(AST&& drugi);
-			virtual void compiliraj() = 0;		// ovo će se možda drugačije zvati ubuduće, analogon "izvrši" s IP, osim što sad ne interpretiram, nego optimiziram i compiliram
+
+			virtual llvm::Value* GenerirajKodIzraz() = 0;
+			virtual llvm::Function* GenerirajKodFunkcija() = 0;
+			virtual llvm::Type* GenerirajKodTip() = 0;
+
+			//virtual llvm::Value* compilirajDjecu(llvm::LLVMContext& _context);
+
+			static LLVMCompatibility::Context& Context() { return context; }
+			static llvm::IRBuilder<>& Builder() { return *context.Builder(); }
+			static std::unique_ptr<llvm::Module>& Module() { return context.Module(); }
 
 			virtual ~AST();
 	};
-
-	class Program : public AST
+	
+	// sljedeće dvije klase služe za lakše prepoznavanje 
+	// izraza (expression) i naredbe (statement)
+	class IzrazAST : public AST 
 	{
 		public:
-			Program() : AST() { setKorijen(this); setRoditelj(nullptr); }
-			Program(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
-			Program(Program const& drugi) : AST(drugi) {}
+			IzrazAST(int redak, int stupac) : AST(redak, stupac) { setKorijen(shared_from_this()); }
+			IzrazAST(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) : AST(redak, stupac, std::move(djeca)) {}
+			IzrazAST(IzrazAST const& drugi) : AST(drugi) {}
 			
-			virtual void compiliraj() override {/* compiliraj svu djecu */};
-			virtual ~Program(){}
+			llvm::Value* GenerirajKod() { return GenerirajKodIzraz(); }
+
+			virtual llvm::Function* GenerirajKodFunkcija() override { return nullptr; }
+			virtual llvm::Type* GenerirajKodTip() override { return nullptr; }
+			
+			virtual ~IzrazAST() {}
+	};	
+
+	class FunkcijaAST : public AST
+	{
+		public:
+			FunkcijaAST(int redak, int stupac) : AST(redak, stupac) { setKorijen(shared_from_this()); }
+			FunkcijaAST(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) : AST(redak, stupac, std::move(djeca)) {}
+			FunkcijaAST(FunkcijaAST const& drugi) : AST(drugi) {}
+
+			llvm::Function* GenerirajKod() { return GenerirajKodFunkcija(); }
+
+			virtual llvm::Type* GenerirajKodTip() override { return nullptr; }
+			virtual llvm::Value* GenerirajKodIzraz() override { return nullptr; }
+
+			virtual ~FunkcijaAST() {}
 	};
 
-	class UseDirektiva : public AST
+	class TipAST : public AST
 	{
-		protected:
+		public:
+			TipAST(int redak, int stupac) : AST(redak, stupac) { setKorijen(shared_from_this()); }
+			TipAST(int redak, int stupac, std::list <std::shared_ptr<AST>>&& djeca) : AST(redak, stupac, std::move(djeca)) {}
+			TipAST(TipAST const& drugi) : AST(drugi) {}
+
+			llvm::Type* GenerirajKod() { return GenerirajKodTip(); }	
+
+			virtual llvm::Function* GenerirajKodFunkcija() override { return nullptr; }
+			virtual llvm::Value* GenerirajKodIzraz() override { return nullptr; }
+
+			virtual ~TipAST() {}
+	};
+
+	//class Naredba : public IzrazAST 
+	//{
+	//	public:
+	//		Naredba(int redak, int stupac) : IzrazAST(redak, stupac) { setKorijen(this); }
+	//		Naredba(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) : IzrazAST(redak, stupac, std::move(djeca)) {}
+	//		Naredba(Naredba const& drugi) : IzrazAST(drugi) {}
+
+	//		virtual ~Naredba() {}
+	//};	
+
+	//class Program : public IzrazAST
+	//{
+	//	private:
+	//		llvm::Function* main;
+	//		llvm::Module* modul;
+	//		std::shared_ptr<Doseg> doseg;
+
+	//	public:
+	//		Program();
+	//		Program(std::list<std::shared_ptr<AST>>&& djeca) : AST(0, 0, std::move(djeca)) {}
+	//		Program(Program const& drugi) : IzrazAST(drugi) {}
+	//		
+	//		virtual llvm::Value* GenerirajKodIzraz() override;
+	//		virtual ~Program(){}
+	//};
+
+	class UseDirektiva : public IzrazAST
+	{
+		private:
 			std::string path;
 
 		public:
-			UseDirektiva(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
-			UseDirektiva(UseDirektiva const& drugi) : AST(drugi) { path = drugi.path; }
+			UseDirektiva(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
+			UseDirektiva(UseDirektiva const& drugi);
 			
-			virtual void compiliraj() override {/* compiliraj datoteku koja se nalazi na path*/};
+			// use direktiva se mora izvršiti odmah, a ne tek kad prevođenje dođe na red. zato imamo izvrsi()
+			std::deque<std::shared_ptr<Token>> izvrsi(Parser& parser);	
+			virtual llvm::Value* GenerirajKodIzraz() override { return nullptr; } // do nothing
 			virtual ~UseDirektiva(){}
 	};
 
-	class DeklaracijaFunkcije : public AST
+	class DeklaracijaStrukture : public TipAST
 	{
 		protected:
-			std::string m_povratniTip;
 			std::string m_ime;
-			
-		public:
-			DeklaracijaFunkcije(std::list<AST*>&& djeca) : AST(std::move(djeca)){}
-			DeklaracijaFunkcije(DeklaracijaFunkcije const& drugi) : AST(drugi) { m_povratniTip = drugi.m_povratniTip; m_ime = drugi.m_ime; }
 
-			virtual void compiliraj() override {/* compiliraj svoju djecu */};
+		public:
+			DeklaracijaStrukture(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
+			DeklaracijaStrukture(DeklaracijaStrukture const& drugi) : TipAST(drugi) {}
+
+			virtual llvm::Type* GenerirajKodTip() override;
+			virtual ~DeklaracijaStrukture() {}
+	};
+	
+	class DefinicijaStrukture : public DeklaracijaStrukture
+	{
+		protected:
+			std::vector<std::string> m_tipoviElemenata;
+			std::vector<std::string> m_imenaElemenata;
+
+		public:
+			DefinicijaStrukture(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
+			DefinicijaStrukture(DefinicijaStrukture const& drugi);
+
+			virtual llvm::Type* GenerirajKodTip() override;
+			virtual ~DefinicijaStrukture() {}
+	};
+
+	class DeklaracijaFunkcije : public FunkcijaAST
+	{
+		public:
+			DeklaracijaFunkcije(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
+			DeklaracijaFunkcije(DeklaracijaFunkcije const& drugi);
+
+			virtual llvm::Function* GenerirajKodFunkcija() override;
 			virtual ~DeklaracijaFunkcije(){}
 	};
 
 	class DefinicijaFunkcije : public DeklaracijaFunkcije
 	{
+		//protected:
+			//ASTList m_tijelo;
+
 		public:
-			DefinicijaFunkcije(std::list<AST*>&& djeca) : DeklaracijaFunkcije(std::move(djeca)) {}
-			DefinicijaFunkcije(DefinicijaFunkcije const& drugi) : DeklaracijaFunkcije(drugi) {}
+			DefinicijaFunkcije(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
+			DefinicijaFunkcije(DefinicijaFunkcije const& drugi);
 			
-			virtual void compiliraj() override {/* compiliraj svoju djecu */ };
+			virtual llvm::Function* GenerirajKodFunkcija() override;
 			virtual ~DefinicijaFunkcije() {}
 	};
 
-	class If : public AST
-	{
-		public:
-			If(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
-			If(If const& drugi) : AST(drugi) {}
-			
-			virtual void compiliraj() override {/* compiliraj uvjet i tijelo */ }
-			virtual ~If() {}
-	};
-
-	class IfElse : public If
-	{
-		public:
-			IfElse(std::list<AST*>&& djeca) : If(std::move(djeca)) {}
-			IfElse(IfElse const& drugi) : If(drugi) {}
-			
-			virtual void compiliraj() override {/* compiliraj if preko parenta, else sam */}
-			virtual ~IfElse() {}
-	};
-
-	class While : public AST
-	{
-		public:
-            While(std::list<AST*>&& djeca) : AST(std::move(djeca)){}
-			While(While const& drugi) : AST(drugi) {}
-
-            virtual void compiliraj() override {/*you know what to do*/}
-            virtual ~While() {}
-	};
-
-	class For : public AST
-	{
-		public:
-			For(std::list<AST*>&& djeca) : AST(std::move(djeca)){}
-			For(For const& drugi) : AST(drugi) {}
-
-			virtual void compiliraj() override {}
-			virtual ~For(){}
-	};
-
-	class Return : public AST
-	{
-		public:
-			Return(std::list<AST*>&& djeca) : AST(std::move(djeca)){}
-			Return(Return const& drugi) : AST(drugi) {}
-
-			virtual void compiliraj() override {}
-			virtual ~Return(){}
-	};
-
-	// 08.01.2019. možda bi bilo dobro staviti da break i continue nasljeđuju od leaf
-	class Break : public AST
-	{
-		public:
-			Break() : AST(){}
-			Break(Break const& drugi) : AST(drugi) {}
-
-			virtual void compiliraj() override {}
-			virtual ~Break(){}
-	};
-
-	class Continue : public AST
-	{
-		public:
-			Continue() : AST(){}
-			Continue(Continue const& drugi) : AST(drugi) {}
-
-			virtual void compiliraj() override {}
-			virtual ~Continue(){}
-	};
-
-	class Assert : public AST
-	{
-		public:
-			Assert(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
-			Assert(Assert const& drugi) : AST(drugi) {}
-
-			virtual void compiliraj() override {}
-			virtual ~Assert(){}
-	};
-
-	class Error : public AST
-	{
-		public:
-			Error(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
-			Error(Error const& drugi) : AST(drugi) {}
-
-			virtual void compiliraj() override {}
-			virtual ~Error(){}
-	};
-
-	class Varijabla : public AST
+	class TypeDef : public IzrazAST
 	{
 		protected:
 			std::string m_tip;
+			std::string m_alias;
+
+		public:
+			TypeDef(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
+			TypeDef(TypeDef const& drugi);
+
+			virtual llvm::Value* GenerirajKodIzraz() override;
+			virtual ~TypeDef() {}
+	};
+
+	class IfElse : public IzrazAST
+	{
+		private:
+			//	std::shared_ptr<Doseg> doseg; // bezimeni, prazni doseg koji za djecu ima doseg od if i doseg od else
+
+		public:
+			IfElse(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
+			IfElse(IfElse const& drugi);
+
+			virtual llvm::Value* GenerirajKodIzraz() override;
+			virtual ~IfElse() {}
+	};
+
+	class While : public IzrazAST
+	{
+		private:
+			llvm::BasicBlock* m_pocetakPetlje;
+			llvm::BasicBlock* m_krajPetlje;
+
+		public:
+			While(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
+			While(While const& drugi);
+
+			llvm::BasicBlock* PocetakPetlje() {	return m_pocetakPetlje;	};
+			llvm::BasicBlock* KrajPetlje() { return m_krajPetlje; }
+
+            virtual llvm::Value* GenerirajKodIzraz() override;
+            virtual ~While() {}
+	};
+
+	class For : public IzrazAST
+	{
+		private:
+			llvm::BasicBlock* m_krajPetlje;
+			llvm::BasicBlock* m_inkrement;
+
+		public:
+			For(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
+			For(For const& drugi);
+
+			llvm::BasicBlock* BlokNakonPetlje() { return m_krajPetlje; }
+			llvm::BasicBlock* BlokInkrement() { return m_inkrement; }
+
+			virtual llvm::Value* GenerirajKodIzraz() override;
+			virtual ~For(){}
+	};
+
+	class Return : public IzrazAST
+	{
+		public:
+			Return(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
+			Return(Return const& drugi);
+
+			virtual llvm::Value* GenerirajKodIzraz();
+			virtual ~Return(){}
+	};
+
+	class Break : public IzrazAST
+	{
+		public:
+			Break(int redak, int stupac);
+			Break(Break const& drugi);
+
+			virtual llvm::Value* GenerirajKodIzraz() override; // placeholder
+			virtual ~Break(){}
+	};
+
+	class Continue : public IzrazAST
+	{
+		public:
+			Continue(int redak, int stupac);
+			Continue(Continue const& drugi);
+
+			virtual llvm::Value* GenerirajKodIzraz() override;
+			virtual ~Continue(){}
+	};
+
+	class Assert : public IzrazAST
+	{
+		public:
+			Assert(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) : IzrazAST(redak, stupac, std::move(djeca)) {}
+			Assert(Assert const& drugi) : IzrazAST(drugi) {}
+
+			virtual llvm::Value* GenerirajKodIzraz() override { return nullptr; };
+			virtual ~Assert(){}
+	};
+	
+	/*
+	// what the hell je error -- pogledati c0 docs, zasad komentiram
+	class Error : public IzrazAST
+	{
+		public:
+			Error(std::list<std::shared_ptr<AST>>&& djeca) : AST(std::move(djeca)) {}
+			Error(Error const& drugi) : IzrazAST(drugi) {}
+
+			virtual llvm::Value* GenerirajKodIzraz() override;
+			virtual ~Error(){}
+	};
+	*/
+
+	// varijable će vjerojatno trebati raspisati u više klasa ovisno o tipu
+	class Varijabla : public IzrazAST
+	{
+		protected:
 			std::string m_ime;
 
 		public:
-			Varijabla(std::list<AST*>&& djeca) : AST(std::move(djeca)){};
-			Varijabla(Varijabla const& drugi) : AST(drugi) { m_tip = drugi.m_tip; m_ime = drugi.m_ime; }
+			Varijabla(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
+			Varijabla(Varijabla const& drugi);
 
-			virtual void compiliraj() override {/* radi nešto s varijablom */};
+			virtual llvm::Value* GenerirajKodIzraz() override;
 			virtual ~Varijabla(){}
 	};
 
-	class DeklaracijaVarijable : public Varijabla
+	class DeklaracijaVarijable : public IzrazAST
 	{
-		protected:
-			std::string m_desno;
-
 		public:
-			DeklaracijaVarijable(std::list<AST*>&& djeca) : Varijabla(std::move(djeca)){}
-			DeklaracijaVarijable(DeklaracijaVarijable const& drugi) : Varijabla(drugi) { m_desno = drugi.m_desno; }
+			DeklaracijaVarijable(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
+			DeklaracijaVarijable(DeklaracijaVarijable const& drugi);
 
-			virtual void compiliraj() override {/* zapamti varijablu i njenu vrijednost */ };
+			//std::string const& GetTip() { return m_tip; }
+			//std::string const& Ime() { return m_ime; }
+
+			Varijabla const& getVarijabla() const { return *(std::dynamic_pointer_cast<Varijabla>)(m_djeca.front()); }	// poseban geter za ovo jer je odvratno
+			virtual llvm::Value* GenerirajKodIzraz() override;
 			virtual ~DeklaracijaVarijable() {}
 	};
 
-	class TernarniOperator : public AST
+	class TernarniOperator : public IzrazAST
 	{
 		public:
-			TernarniOperator(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
-			TernarniOperator(TernarniOperator const& drugi) : AST(drugi) {}
+			TernarniOperator(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
+			TernarniOperator(TernarniOperator const& drugi);
 
-			virtual void compiliraj() override {/* ternarno operiraj */};
+			virtual llvm::Value* GenerirajKodIzraz() override;
 			virtual ~TernarniOperator() {}
 	};
 
-	class LogickiOperator : public AST
+	class LogickiOperator : public IzrazAST
 	{
 		public:
-			LogickiOperator(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
-			LogickiOperator(LogickiOperator const& drugi) : AST(drugi) {}
+			LogickiOperator(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
+			LogickiOperator(LogickiOperator const& drugi);
 
-			virtual void compiliraj() override {/* logicki operiraj */};
+			virtual llvm::Value* GenerirajKodIzraz() override;
 			virtual ~LogickiOperator() {}
 	};
 
-	class BitwiseOperator : public AST
+	class BitovniOperator : public IzrazAST
 	{
 		public:
-			BitwiseOperator(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
-			BitwiseOperator(BitwiseOperator const& drugi) : AST(drugi) {}
+			BitovniOperator(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
+			BitovniOperator(BitovniOperator const& drugi);
 
-			virtual void compiliraj() override {/* bitwise operiraj */};
-			virtual ~BitwiseOperator() {}
+			virtual llvm::Value* GenerirajKodIzraz() override;
+			virtual ~BitovniOperator() {}
 	};
 
-	class OperatorJednakost : public AST
+	class OperatorJednakost : public IzrazAST
 	{
 		public:
-			OperatorJednakost(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
-			OperatorJednakost(OperatorJednakost const& drugi) : AST(drugi) {}
+			OperatorJednakost(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
+			OperatorJednakost(OperatorJednakost const& drugi);
 
-			virtual void compiliraj() override {/* operiraj jednakost */};
+			virtual llvm::Value* GenerirajKodIzraz() override; 
 			virtual ~OperatorJednakost() {}
 	};
 
-	class OperatorUsporedbe : public AST
+	class OperatorUsporedbe : public IzrazAST
 	{
 		public:
-			OperatorUsporedbe(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
-			OperatorUsporedbe(OperatorUsporedbe const& drugi) : AST(drugi) {}
+			OperatorUsporedbe(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
+			OperatorUsporedbe(OperatorUsporedbe const& drugi);
 
-			virtual void compiliraj() override {/* operiraj usporedbu */};
+			virtual llvm::Value* GenerirajKodIzraz() override; 
 			virtual ~OperatorUsporedbe() {}
 	};
 
-	class BinarniOperator : public AST
+	class BinarniOperator : public IzrazAST
 	{
 		public:
-			BinarniOperator(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
-			BinarniOperator(BinarniOperator const& drugi) : AST(drugi) {}
+			BinarniOperator(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
+			BinarniOperator(BinarniOperator const& drugi);
 
-			virtual void compiliraj() override {/* binarno operiraj */ };
+			virtual llvm::Value* GenerirajKodIzraz() override; 
 			virtual ~BinarniOperator() {}
 	};
 
-	class OperatorPridruzivanja : public AST
+	class OperatorPridruzivanja : public IzrazAST
 	{
 		public:
-			OperatorPridruzivanja(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
-			OperatorPridruzivanja(OperatorPridruzivanja const& drugi) : AST(drugi) {}
+			OperatorPridruzivanja(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
+			OperatorPridruzivanja(OperatorPridruzivanja const& drugi);
 
-			virtual void compiliraj() override {/* pridruži */ };
+			virtual llvm::Value* GenerirajKodIzraz() override;
 			virtual ~OperatorPridruzivanja() {}
 	};
 
-	class Alokacija : public AST
+	class Alokacija : public IzrazAST
 	{
 		public:
-			Alokacija(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
-			Alokacija(Alokacija const& drugi) : AST(drugi) {}
+			Alokacija(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
+			Alokacija(Alokacija const& drugi);
 
-			virtual void compiliraj() override {/* alociraj */ };
+			virtual llvm::Value* GenerirajKodIzraz() override;
 			virtual ~Alokacija() {}
 	};
 
-	class AlokacijaArray : public AST
+	class AlokacijaArray : public IzrazAST
 	{
 		public:
-			AlokacijaArray(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
-			AlokacijaArray(AlokacijaArray const& drugi) : AST(drugi) {}
+			AlokacijaArray(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
+			AlokacijaArray(AlokacijaArray const& drugi);
 
-			virtual void compiliraj() override {/* alociraj array */ };
+			virtual llvm::Value* GenerirajKodIzraz() override; 
 			virtual ~AlokacijaArray() {}
 	};
 
-	class Negacija : public AST
+	class Negacija : public IzrazAST
 	{
 		public:
-			Negacija(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
-			Negacija(Negacija const& drugi) : AST(drugi) {}
+			Negacija(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
+			Negacija(Negacija const& drugi);
 
-			virtual void compiliraj() override {/* negiraj */ };
+			virtual llvm::Value* GenerirajKodIzraz() override; 
 			virtual ~Negacija() {}
 	};
 
-	class Tilda : public AST
+	class Tilda : public IzrazAST
 	{
 		public:
-			Tilda(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
-			Tilda(Tilda const& drugi) : AST(drugi) {}
+			Tilda(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
+			Tilda(Tilda const& drugi);
 
-			virtual void compiliraj() override {/* iztildači */ };
+			virtual llvm::Value* GenerirajKodIzraz() override; 
 			virtual ~Tilda() {}
 	};
 
-	class Minus : public AST
+	class Minus : public IzrazAST
 	{
 		public:
-			Minus(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
-			Minus(Minus const& drugi) : AST(drugi) {}
+			Minus(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
+			Minus(Minus const& drugi);
 
-			virtual void compiliraj() override {/* promijeni predznak */ };
+			virtual llvm::Value* GenerirajKodIzraz() override;
 			virtual ~Minus() {}
 	};
 
-	class Dereferenciranje : public AST
+	class Dereferenciranje : public IzrazAST
 	{
 		public:
-			Dereferenciranje(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
-			Dereferenciranje(Dereferenciranje const& drugi) : AST(drugi) {}
+			Dereferenciranje(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
+			Dereferenciranje(Dereferenciranje const& drugi);
 
-			virtual void compiliraj() override {/* dereferenciraj */ };
+			virtual llvm::Value* GenerirajKodIzraz() override; 
 			virtual ~Dereferenciranje() {}
 	};
 
-	class PozivFunkcije : public AST
+	class PozivFunkcije : public IzrazAST
 	{
 		public:
-			PozivFunkcije(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
-			PozivFunkcije(PozivFunkcije const& drugi) : AST(drugi) {}
+			PozivFunkcije(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
+			PozivFunkcije(PozivFunkcije const& drugi);
 
-			virtual void compiliraj() override {/* pozovi funkciju */ };
+			virtual llvm::Value* GenerirajKodIzraz() override;
 			virtual ~PozivFunkcije() {}
 	};
 
-	class Inkrement : public AST
+	class Inkrement : public IzrazAST
 	{
 		public:
-			Inkrement(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
-			Inkrement(Inkrement const& drugi) : AST(drugi) {}
+			Inkrement(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
+			Inkrement(Inkrement const& drugi);
 
-			virtual void compiliraj() override {/* inkrementiraj */ };
+			virtual llvm::Value* GenerirajKodIzraz() override;
 			virtual ~Inkrement() {}
 	};
 
-	class Dekrement : public AST
+	class Dekrement : public IzrazAST
 	{
 		public:
-			Dekrement(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
-			Dekrement(Dekrement const& drugi) : AST(drugi) {}
+			Dekrement(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
+			Dekrement(Dekrement const& drugi);
 
-			virtual void compiliraj() override {/* dekrementiraj */ };
+			virtual llvm::Value* GenerirajKodIzraz() override;
 			virtual ~Dekrement() {}
 	};
 
-	class UglateZagrade : public AST
+	class UglateZagrade : public IzrazAST
 	{
 		public:
-			UglateZagrade(std::list<AST*>&& djeca) : AST(std::move(djeca)) {}
-			UglateZagrade(UglateZagrade const& drugi) : AST(drugi) {}
+			UglateZagrade(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
+			UglateZagrade(UglateZagrade const& drugi);
 
-			virtual void compiliraj() override {/* dohvati što je u uglatim zagradama */ };
+			virtual llvm::Value* GenerirajKodIzraz() override; 
 			virtual ~UglateZagrade() {}
 	};
 
-	class Leaf : public AST
+	class Tip : public TipAST
+	{
+		protected:
+			std::string m_ime;
+
+		public:
+			Tip(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
+			Tip(Tip const& drugi);
+			
+			operator std::string() { return m_ime; }
+
+			virtual llvm::Type* GenerirajKodTip() override;
+
+			virtual ~Tip() {}
+	};
+
+	class Tocka : public IzrazAST
+	{
+		public:
+			Tocka(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
+			Tocka(Tocka const& drugi);
+
+			virtual llvm::Value* GenerirajKodIzraz() override;
+			virtual ~Tocka() {}
+	};
+
+	class Strelica : public IzrazAST
+	{
+		public:
+			Strelica(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca);
+			Strelica(Strelica const& drugi);
+
+			virtual llvm::Value* GenerirajKodIzraz() override;
+			virtual ~Strelica() {}
+	};
+
+	class Leaf : public IzrazAST
 	{
 		protected:
 			Token m_sadrzaj;
 
 		public:
-			explicit Leaf(Token const& sadrzaj) : AST(), m_sadrzaj(sadrzaj) {}
-			Leaf(Leaf const& drugi) : AST(drugi) { m_sadrzaj = drugi.m_sadrzaj; }
+			Leaf(Token const& sadrzaj) : IzrazAST(sadrzaj.Redak(), sadrzaj.Stupac()), m_sadrzaj(sadrzaj) {}
+			Leaf(Leaf const& drugi) : IzrazAST(drugi) { m_sadrzaj = drugi.m_sadrzaj; }
 
 			operator Token() const { return m_sadrzaj; }
+			std::string const& Sadrzaj() const { return m_sadrzaj.Sadrzaj(); }
+			TokenTip TipTokena() const { return m_sadrzaj.Tip(); }
 
-			virtual void compiliraj() override {};		// od svih praznih overrideova, samo ovaj treba ostati prazan
+			virtual llvm::Value* GenerirajKodIzraz() override { return nullptr; };	// od svih praznih overrideova, samo ovaj treba ostati prazan. vedran iz budućnosti: treba li stvarno? DA. ne.
 	};
 
-	// "AST wrapper" za std::list<AST*>, zapravo je ovo najobičniji AST, koji
-	// se pravi da je lista i da su njegova djeca zapravo njegovi elementi
-	class ASTList : public AST
+	class BrojLiteral : public Leaf
 	{
 		public:
-			using iterator = std::list<AST*>::iterator;
+			BrojLiteral(Token const& sadrzaj);
+			operator int() const { return std::stoi(m_sadrzaj.Sadrzaj()); }
 
-			ASTList() : AST(){}
-			ASTList(ASTList const& drugi) : AST(drugi) {}
-			
-			void push_back(AST* novi) { dodajDijete(novi); }	// premišljam se da ostavim dodajDijete ili da napišem novu funkciju koja dodaje dijete i kao parenta mu stavi svog parenta umjesto sebe
-			virtual void compiliraj() override {/* compiliraj sve svoje elemente */};
+			virtual llvm::Value* GenerirajKodIzraz() override;
+	};
 
-			iterator begin() { return m_djeca.begin(); }
-			iterator end() { return m_djeca.end(); }
+	class CharLiteral : public Leaf
+	{
+		public:
+			CharLiteral(Token const& sadrzaj);
+			operator char() const { return m_sadrzaj.Sadrzaj()[0]; }
+
+			virtual llvm::Value* GenerirajKodIzraz() override;
+	};
+
+	class BoolLiteral : public Leaf
+	{
+		public:
+			BoolLiteral(Token const& sadrzaj);
+			operator bool() const;
+
+			virtual llvm::Value* GenerirajKodIzraz() override;
+	};
+
+	class StringLiteral : public Leaf
+	{
+		public:
+			StringLiteral(Token const& sadrzaj);
+			operator std::string() const { return m_sadrzaj.Sadrzaj(); }
+			operator const char*() const { return m_sadrzaj.Sadrzaj().c_str(); }
+
+			virtual llvm::Value* GenerirajKodIzraz() override;
+	};
+
+	// AST "wrapper" za std::list<std::shared_ptr<AST>>; zapravo je ovo najobičniji AST, koji
+	// se pravi da je lista i da su njegova djeca zapravo njegovi elementi
+	class ASTList : public IzrazAST
+	{
+	public:
+		using iterator = std::list<std::shared_ptr<AST>>::iterator;
+
+		ASTList(int redak, int stupac) : IzrazAST(redak, stupac) {}
+		ASTList(ASTList const& drugi) : IzrazAST(drugi) {}
+
+		void push_back(std::shared_ptr<AST> novi) { dodajDijete(novi); }
+		virtual llvm::Value* GenerirajKodIzraz() override { return nullptr; }
+
+		iterator begin() { return m_djeca.begin(); }
+		iterator end() { return m_djeca.end(); }
+		bool empty() { return m_djeca.empty(); }
+		size_t size() { return m_djeca.size(); }
+		void pop_front() { m_djeca.pop_front(); }
 	};
 }
 
