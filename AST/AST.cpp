@@ -5,6 +5,7 @@
 #include "../Parser/Parser.hpp"
 #include "AST.hpp"
 #include "../LLVM-Compatibility/LLVM-Compatibility.hpp"
+#include "llvm/Support/ErrorHandling.h"
 
 namespace C0Compiler
 {
@@ -23,10 +24,6 @@ namespace C0Compiler
 
 			// zapamti tip it-tog djeteta
 			type_info const& tipDjeteta = typeid(**it);
-
-			// i copy-konstruiraj dijete ispravnog tipa
-			//if (tipDjeteta == typeid(Program))
-			//	novoDijete = std::make_shared<Program>((Program const&)**it);
 
 			if (tipDjeteta == typeid(UseDirektiva))
 				novoDijete = std::make_shared<UseDirektiva>((UseDirektiva const&)**it);
@@ -75,8 +72,9 @@ namespace C0Compiler
 			else if (tipDjeteta == typeid(LogickiOperator))
 				novoDijete = std::make_shared<LogickiOperator>((LogickiOperator const&)**it);
 
-			else if (tipDjeteta == typeid(BitovniOperator))
-				novoDijete = std::make_shared<BitovniOperator>((BitovniOperator const&)**it);
+			// ovo su sad binarni operatori
+			//else if (tipDjeteta == typeid(BitovniOperator))
+			//	novoDijete = std::make_shared<BitovniOperator>((BitovniOperator const&)**it);
 
 			else if (tipDjeteta == typeid(OperatorJednakost))
 				novoDijete = std::make_shared<OperatorJednakost>((OperatorJednakost const&)**it);
@@ -146,7 +144,7 @@ namespace C0Compiler
 		m_redak = redak;
 		m_stupac = stupac;
 		m_roditelj = nullptr;
-		sirocad.push_back(std::move(std::shared_ptr<AST>(this)));
+	//	//sirocad.push_back(shared_from_this());
 	}
 
 	AST::AST(AST const& drugi)
@@ -155,14 +153,14 @@ namespace C0Compiler
 		m_stupac = drugi.m_stupac;
 		m_roditelj = nullptr;
 		ucitajDjecu(drugi.m_djeca);
-		sirocad.push_back(std::move(std::shared_ptr<AST>(this)));
+		//sirocad.push_back(shared_from_this());
 	}
 
 	AST::AST(AST&& drugi) : m_djeca(std::move(drugi.m_djeca)) 
 	{
 		// svakom djetetu stavi sebe za roditelja
 		for (std::list<std::shared_ptr<AST>>::iterator it = m_djeca.begin(); it != m_djeca.end(); ++it)
-			(*it)->setRoditelj(std::move(std::shared_ptr<AST>(this)));
+			(*it)->Roditelj(this);
 
 		m_redak = drugi.m_redak;
 		m_stupac = drugi.m_stupac;
@@ -172,38 +170,66 @@ namespace C0Compiler
 	AST::AST(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) : m_djeca(std::move(djeca))
 	{
 		// svakom svom djetetu stavi sebe za roditelja
-		for (std::list<std::shared_ptr<AST>>::iterator it = djeca.begin(); it != djeca.end(); ++it)
-			(*it)->setRoditelj(std::move(std::shared_ptr<AST>(this)));
+		for (std::list<std::shared_ptr<AST>>::iterator it = m_djeca.begin(); it != m_djeca.end();)
+		{
+			if (*it != nullptr)
+				(*it++)->Roditelj(this);
+			else
+				m_djeca.erase(it++);
+		}
 
 		m_redak = redak;
 		m_stupac = stupac;
 		m_roditelj = nullptr;
-		sirocad.push_back(std::move(std::shared_ptr<AST>(this)));
+		//sirocad.push_back(shared_from_this());
+	}
+
+	void AST::IspisiDjecu(std::ostream& out) const
+	{
+		int visinaPodstabla = 0;
+		// pogledaj koliko si duboko u stablu
+		for(AST const* trenutni = this; !trenutni->IsRoot(); trenutni = trenutni->m_roditelj)
+			++visinaPodstabla;
+
+		// zatim ispiši djecu
+		for (std::list<std::shared_ptr<AST>>::const_iterator it = m_djeca.begin(); it != m_djeca.end(); ++it)
+		{
+			// prije svakog djeteta nalijepi onoliko tabulatora 
+			// kolika je dubina te grane u glavnom AST-u
+			for (int i = 0; i < visinaPodstabla; ++i)
+				out << '\t';
+
+			// pa ispiši dijete
+			(*it)->Ispisi(out);
+		}
 	}
 
 	void AST::dodajDijete(std::shared_ptr<AST> dijete)
 	{
-		// dodaj si dijete
-		m_djeca.push_back(dijete);
+		if (dijete)
+		{
+			// dodaj si dijete
+			m_djeca.push_back(dijete);
 
-		// i reci tom djetetu da si mu sad ti roditelj
-		m_djeca.back()->setRoditelj(std::move(std::shared_ptr<AST>(this)));
+			// i reci tom djetetu da si mu sad ti roditelj
+			m_djeca.back()->Roditelj(this);
+		}
 	}
 
-	void AST::setRoditelj(std::shared_ptr<AST> roditelj)
+	void AST::Roditelj(AST* roditelj)
 	{
 		// postavi roditelja
 		m_roditelj = roditelj;
 
 		// i izbriši se iz siročadi
-		for (std::list<std::shared_ptr<AST>>::iterator it = sirocad.begin(); it != sirocad.end(); ++it)
-		{
-			if (*it == shared_from_this())
-			{
-				sirocad.erase(it);
-				break;
-			}
-		}
+		//for (std::list<std::shared_ptr<AST>>::iterator it = sirocad.begin(); it != sirocad.end(); ++it)
+		//{
+		//	if (*it == shared_from_this())
+		//	{
+		//		sirocad.erase(it);
+		//		break;
+		//	}
+		//}
 	}
 	
 	AST& AST::operator=(AST const& drugi)
@@ -224,55 +250,91 @@ namespace C0Compiler
 			m_djeca = std::move(drugi.m_djeca);
 			
 			for (std::list<std::shared_ptr<AST>>::iterator it = m_djeca.begin(); it != m_djeca.end(); ++it)
-				(*it)->setRoditelj(shared_from_this());
+				(*it)->Roditelj(this);
 		}
 		return std::move(*this);
 	}
 
-	//llvm::Value* AST::compilirajDjecu(llvm::LLVMContext& _context)
-	//{
-	//	llvm::Value* zadnji = nullptr;
+	void AST::ProvjeraUvjeta(llvm::Value* uvjetProlaza, std::string const& opisIznimke, bool assert)
+	{
+		return;
+	}
 
-	//	for (std::list<std::shared_ptr<AST>>::iterator it = m_djeca.begin(); it != m_djeca.end(); ++it) 
-	//		zadnji = (*it)->GenerirajKod(_context);
-	//	
-	//	return zadnji;
-	//}
+	void AST::ProvjeraVrijednosti(llvm::Value* vrijednost, std::string const& imeOperatora, int vrsta)
+	{
+		if(vrijednost == nullptr)
+			throw new SemantickaGreska(Redak(), Stupac(), std::string("Operand operatora \"") + imeOperatora + "\" je neispravna vrijednost");
+	}
+	// ovdje smo stali - 3. argument mora biti std::string
+	void AST::ProvjeraVrijednosti(llvm::Value* prvaVrijednost, llvm::Value* drugaVrijednost, std::string const& imeOperatora)
+	{
+		if(prvaVrijednost == nullptr)
+			throw SemantickaGreska(Redak(), Stupac(), "Lijevi operand operatora \"" + imeOperatora + "\" je neispravna vrijednost");
+		
+		if(drugaVrijednost == nullptr)
+			throw SemantickaGreska(Redak(), Stupac(), "Desni operand operatora \"" + imeOperatora + "\" je neispravna vrijednost");
+	}
+
+	void AST::ProvjeraTipa(llvm::Value* vrijednost, llvm::Type* ocekivaniTip)
+	{
+		if(vrijednost->getType() != ocekivaniTip)
+			throw SemantickaGreska(Redak(), Stupac(), "Pogrešan tip! Očekujem " + Context().PrevediTip(ocekivaniTip));
+	}
+
+	void AST::ProvjeraPolja(llvm::Value* vrijednost)
+	{
+		std::string tipVrijednosti = Context().PrevediTip(vrijednost->getType());
+		if(tipVrijednosti != "string" && 
+			(tipVrijednosti[tipVrijednosti.size()-2] != '[' || tipVrijednosti[tipVrijednosti.size()-1] != ']'))
+				throw SemantickaGreska(Redak(), Stupac(), "Pogrešan tip! Očekujem polje ili string");
+	}
+
+	std::ostream& operator<<(std::ostream& out, AST const& ast)
+	{
+		ast.Ispisi(out);
+		return out;
+	}
 
 	AST::~AST()
 	{
 		//pobrisiDjecu();
 
 		// ako si siroče, izbriši se iz popisa siročadi
-		for (std::list<std::shared_ptr<AST>>::iterator it = sirocad.begin(); it != sirocad.end(); ++it)
-		{
-			if (*it == shared_from_this())
-			{
-				sirocad.erase(it);
-				break;
-			}
-		}
+		//for (std::list<std::shared_ptr<AST>>::iterator it = sirocad.begin(); it != sirocad.end(); ++it)
+		//{
+		//	if (*it == shared_from_this())
+		//	{
+		//		sirocad.erase(it);
+		//		break;
+		//	}
+		//}
 	}
 	
 	////////////////////////////////////////////////////////////////////////////////////
 	// Program
+	// DONE
 
-	//Program::Program() : AST(0, 0)
-	//{
-	//	setKorijen(shared_from_this()); 
-	//	modul = new llvm::Module("main", AST::Context());
-	//}
+	Program::Program() : AST(0, 0)
+	{
+		//setKorijen(shared_from_this()); 
+	}
 
-	//llvm::Value* Program::GenerirajKod(llvm::LLVMContext& _context)
-	//{
-	//	m_doseg = std::make_shared<Doseg>();
-	//	m_doseg->setRoditelj(nullptr);
-	//	Doseg::setZadnji(m_doseg);
-	//	// I JOŠ NEŠTA MOŽDA
-	//}
+	void Program::GenerirajKod()
+	{
+		for (std::list<std::shared_ptr<AST>>::iterator it = m_djeca.begin(); it != m_djeca.end(); ++it)
+		{
+			// uvijek je točno jedan od sljedeća 3 poziva netrivijalan i
+			// to nikad nije GenerirajKodIzraz; taj je tu da bude očito
+			// da negdje nešto ne štima ako taj ispadne netrivijalan
+			//(*it)->GenerirajKodIzraz();
+			(*it)->GenerirajKodTip();
+			(*it)->GenerirajKodFunkcija();
+		}
+	}
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// Use direktiva
+	// DONE
 
 	UseDirektiva::UseDirektiva(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) : 
 		IzrazAST(redak, stupac, std::move(djeca)) 
@@ -294,9 +356,12 @@ namespace C0Compiler
 		// leksiraj datoteku 
 		std::deque<std::shared_ptr<Token>> drugiTokeni;
 		Lekser drugiLex(datoteka);
+		std::ofstream drugiLexOut(path + "LekserOut.txt");
 		try
 		{
 			drugiTokeni = drugiLex.leksiraj();
+			for (std::deque<std::shared_ptr<C0Compiler::Token>>::iterator it = drugiTokeni.begin(); it != drugiTokeni.end(); ++it)
+				drugiLexOut << **it << std::endl;
 		}
 		catch (LeksickaGreska const& e)
 		{
@@ -309,6 +374,7 @@ namespace C0Compiler
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// Deklaracija strukture
+	// DONE
 
 	DeklaracijaStrukture::DeklaracijaStrukture(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) : 
 		TipAST(redak, stupac, std::move(djeca)), 
@@ -318,17 +384,26 @@ namespace C0Compiler
 		m_djeca.pop_front();
 	}
 
+	void DeklaracijaStrukture::Ispisi(std::ostream& out) const
+	{
+		out << "DeklaracijaStrukture" << std::endl;
+		IspisiDjecu(out);
+	}
+
 	llvm::Type* DeklaracijaStrukture::GenerirajKodTip()
 	{
-		llvm::StructType* novaStruktura = llvm::StructType::create(*Context().LLVMContext(), m_ime);
-		Context().DodajStrukturu(m_ime);
-		Context().DodajNoviTip("struct " + m_ime, novaStruktura);
-
-		return novaStruktura;
+		if (!Context().StrukturaDefinirana(m_ime))
+		{
+			llvm::StructType* novaStruktura = llvm::StructType::create(*Context().LLVMContext(), m_ime);
+			Context().DodajStrukturu(m_ime);
+			Context().DodajNoviTip("struct " + m_ime, novaStruktura);
+			return novaStruktura;
+		}
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// Definicija strukture
+	// DONE
 
 	DefinicijaStrukture::DefinicijaStrukture(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) : 
 		DeklaracijaStrukture(redak, stupac, std::move(djeca))
@@ -340,8 +415,17 @@ namespace C0Compiler
 		m_imenaElemenata(drugi.m_imenaElemenata)
 	{}
 
+	void DefinicijaStrukture::Ispisi(std::ostream& out) const
+	{
+		out << "DefinicijaStrukture" << std::endl;
+		IspisiDjecu(out);
+	}
+
 	llvm::Type* DefinicijaStrukture::GenerirajKodTip()
 	{
+		if(Context().StrukturaDefinirana(m_ime))
+			throw SemantickaGreska(Redak(), Stupac(), "Struktura " + m_ime + " je već definirana");
+
 		llvm::StructType* novaStruktura = static_cast<llvm::StructType*>(DeklaracijaStrukture::GenerirajKod());
 
 		// dohvati referencu na elemente da ne moramo svaki put pisati cijelo ime djeteta
@@ -358,7 +442,7 @@ namespace C0Compiler
 			elementi.pop_front();
 
 			// spremi ime elementa za nas, jer LLVM nije briga za imena
-			Context().DodajElementStrukture(m_ime, std::dynamic_pointer_cast<Leaf>(*elementi.begin())->Sadrzaj());
+			Context().DodajClanStrukture(m_ime, std::dynamic_pointer_cast<Leaf>(*elementi.begin())->Sadrzaj());
 
 			// izbriši i njega s liste
 			elementi.pop_front();
@@ -382,6 +466,12 @@ namespace C0Compiler
 		FunkcijaAST(drugi)
 	{}
 
+	void DeklaracijaFunkcije::Ispisi(std::ostream& out) const
+	{
+		out << "DeklaracijaFunkcije" << std::endl;
+		IspisiDjecu(out);
+	}
+
 	llvm::Function* DeklaracijaFunkcije::GenerirajKodFunkcija()
 	{
 		// spremi povratni tip funkcije
@@ -393,19 +483,21 @@ namespace C0Compiler
 		m_djeca.pop_front();
 
 		// dijelimo duljinu liste s 2 jer ona sadrži i tipove i imena
-		std::vector<llvm::Type*> tipoviArgumenata(std::dynamic_pointer_cast<ASTList>(m_djeca.front())->size() / 2);
-		std::vector<std::string> imenaArgumenata(std::dynamic_pointer_cast<ASTList>(m_djeca.front())->size() / 2);
+		ASTList& argumenti = *std::dynamic_pointer_cast<ASTList>(m_djeca.front());
+		std::vector<llvm::Type*> tipoviArgumenata(argumenti.size() / 2);
+		std::vector<std::string> imenaArgumenata(argumenti.size() / 2);
 
-		for (int i = 0; i < tipoviArgumenata.size(); ++i)
+		for (int i = 0; !argumenti.empty(); ++i)
 		{
 			// prevedi tip iz stringa u llvm::Type* i pushaj ga u tipove
-			tipoviArgumenata.push_back(m_djeca.front()->GenerirajKodTip());
-			m_djeca.pop_front();
+			tipoviArgumenata[i] = ((*argumenti.begin())->GenerirajKodTip());
+			argumenti.pop_front();
 
 			// i spremi mu ime za kasnije
-			imenaArgumenata.push_back(std::dynamic_pointer_cast<Leaf>(m_djeca.front())->Sadrzaj());
-			m_djeca.pop_front();
+			imenaArgumenata[i] = (std::dynamic_pointer_cast<Leaf>((*argumenti.begin()))->Sadrzaj());
+			argumenti.pop_front();
 		}
+		m_djeca.pop_front();
 
 		// sad znamo dovoljno da možemo generirati tip funkcije
 		llvm::FunctionType* tipFunkcije = llvm::FunctionType::get(povratniTip, tipoviArgumenata, false);
@@ -423,6 +515,7 @@ namespace C0Compiler
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// Definicija funkcije 
+
 	DefinicijaFunkcije::DefinicijaFunkcije(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) :
 		DeklaracijaFunkcije(redak, stupac, std::move(djeca))
 		//m_tijelo(*std::dynamic_pointer_cast<ASTList>(m_djeca.front()))
@@ -433,6 +526,12 @@ namespace C0Compiler
 		//m_tijelo(drugi.m_tijelo)
 	{}
 
+	void DefinicijaFunkcije::Ispisi(std::ostream& out) const
+	{
+		out << "DefinicijaFunkcije" << std::endl;
+		IspisiDjecu(out);
+	}
+
 	llvm::Function* DefinicijaFunkcije::GenerirajKodFunkcija()
 	{
 		// skočimo na dijete koje sadrži ime funkcije
@@ -440,22 +539,22 @@ namespace C0Compiler
 		++it;
 		std::string ime = std::dynamic_pointer_cast<Leaf>(*it)->Sadrzaj();
 		
-		// provjeri je li funkcija s tim imenom već deklarirana
+		// Provjera je li funkcija s tim imenom već deklarirana
 		llvm::Function* funkcija = Module()->getFunction(ime);
 
 		// ako ne, deklariraj je
 		if (funkcija == nullptr)
-			funkcija = DeklaracijaFunkcije::GenerirajKod();
+			funkcija = DeklaracijaFunkcije::GenerirajKodFunkcija();
 
 		// ako je funkcija već definirana, prijavi grešku
 		else if (!funkcija->empty())
-			throw SemantickaGreska(Redak(), Stupac(), "Funkcija " + ime + " je već definirana.");
+			throw SemantickaGreska(Redak(), Stupac(), "Funkcija " + ime + " je već definirana");
 
-		// ako je funkcija deklarirana i još nema tijelo, provjeri ima li isti tip
+		// ako je funkcija deklarirana i još nema tijelo, Provjera ima li isti tip
 		else if (funkcija->getReturnType() != (*m_djeca.begin())->GenerirajKodTip())
-			throw SemantickaGreska(Redak(), Stupac(), "Funkcija '" + ime + "' nema isti povratni tip kao u deklaraciji.");
+			throw SemantickaGreska(Redak(), Stupac(), "Funkcija '" + ime + "' nema isti povratni tip kao u deklaraciji");
 
-		// ako je funkcija deklarirana, još nema tijelo i ima isti tip, provjeri prima li iste argumente
+		// ako je funkcija deklarirana, još nema tijelo i ima isti tip, Provjera prima li iste argumente
 		else
 		{
 			// popni povratni tip i ime funkcije; više nam ne trebaju
@@ -463,23 +562,37 @@ namespace C0Compiler
 			m_djeca.pop_front();
 
 			// zatim izvuci tipove argumenata iz zadnjeg djeteta
-			std::vector<llvm::Type*> tipoviArgumenata(std::dynamic_pointer_cast<ASTList>(m_djeca.front())->size() / 2);
-			for (int i = 0; i < tipoviArgumenata.size(); ++i)
+			ASTList& argumenti = *std::dynamic_pointer_cast<ASTList>(m_djeca.front());
+			std::vector<llvm::Type*> tipoviArgumenata;
+			std::vector<std::string> imenaArgumenata;
+			int maxSize = std::dynamic_pointer_cast<ASTList>(m_djeca.front())->size() / 2;
+			tipoviArgumenata.reserve(maxSize);
+			while (!argumenti.empty())
 			{
 				// prevedi tip iz stringa u llvm::Type* i pushaj ga u tipove
-				tipoviArgumenata.push_back(m_djeca.front()->GenerirajKodTip());
-				m_djeca.pop_front();
+				tipoviArgumenata.push_back((*argumenti.begin())->GenerirajKodTip());
+				argumenti.pop_front();
 
-				// trebaju nam samo tipovi pa imena argumenata odbacujemo
-				m_djeca.pop_front();
+				// zapamti i ime za slučaj da svi tipovi odgovaraju
+				imenaArgumenata.push_back(std::dynamic_pointer_cast<Leaf>(*argumenti.begin())->Sadrzaj());
+				argumenti.pop_front();
 			}
 
 			int i = 0;
 			for (llvm::Function::arg_iterator it = funkcija->arg_begin(); it != funkcija->arg_end(); ++it)
 			{
-				if (it->getType() != tipoviArgumenata[i++])
-					throw SemantickaGreska(Redak(), Stupac(), "Funkcija '" + ime + "' nema iste argumente kao u deklaraciji.");
+				// ako tip ne odgovara, bacamo semantičku grešku. nema overloadanja u C0!
+				if (it->getType() != tipoviArgumenata[i])
+					throw SemantickaGreska(Redak(), Stupac(), "Funkcija '" + ime + "' nema iste argumente kao u deklaraciji");
+
+				// ako tip odgovara, onda ime argumenta u deklarciji setiramo na ime argumenta u definiciji.
+				// kad nešto budemo radili s njima, uvijek ćemo raditi s imenom iz definicije
+				it->setName(imenaArgumenata[i]);
+				++i;
 			}
+
+			// popnemo argumente jer nam više ne trebaju; već smo ih dobili kad je funkcija bila deklarirana
+			m_djeca.pop_front();
 		}
 
 		// otvori blok za funkciju
@@ -492,7 +605,7 @@ namespace C0Compiler
 		{
 			llvm::AllocaInst* alokacija = Context().StackAlokacija(funkcija, it->getType(), it->getName());
 			Builder().CreateStore(&(*it), alokacija);
-			Context().LokalneVarijable()[it->getName()] = alokacija;
+			Context().TrenutniBlok()->Dodaj(alokacija, it->getName());
 		}
 
 		try
@@ -500,13 +613,15 @@ namespace C0Compiler
 			llvm::Value* povratnaVrijednost = m_djeca.front()->GenerirajKodIzraz();
 			if (povratnaVrijednost != nullptr)
 			{
-				// na kraju, provjeri je li funkcija ispravno konstruirana
-				llvm::verifyFunction(*funkcija);
+				// na kraju, Provjera je li funkcija ispravno konstruirana (vraća false ako je sve ok)
+				std::string error;
+				llvm::raw_string_ostream errorStream(error);
+				llvm::verifyFunction(*funkcija, &errorStream);
 				Context().ZatvoriBlok();
 
 				return funkcija;
 			}
-
+			
 			else
 			{
 				Context().ZatvoriBlok();
@@ -518,14 +633,15 @@ namespace C0Compiler
 		// ako ne uspiješ generirati kod za tijelo funkcije, obriši je
 		catch (SemantickaGreska const& e)
 		{
-			std::cout << e.what();
 			funkcija->eraseFromParent();
-			return nullptr;
+			// propagiraj error do main-a
+			throw;
 		}
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// Typedef
+	// DONE
 
 	TypeDef::TypeDef(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) :
 		IzrazAST(redak, stupac, std::move(djeca))
@@ -542,41 +658,50 @@ namespace C0Compiler
 		m_alias(drugi.m_alias)
 	{}
 
+	void TypeDef::Ispisi(std::ostream& out) const
+	{
+		out << "TypeDef" << std::endl;
+		IspisiDjecu(out);
+	}
+
 	llvm::Value* TypeDef::GenerirajKodIzraz()
 	{
 		// ako nismo u globalnom dosegu, bacamo grešku
 		if (Context().TrenutniBlok()->Roditelj() != nullptr)
-			throw SemantickaGreska(Redak(), Stupac(), "typedef se smije pojavljivati samo u globalnom dosegu.");
+			throw SemantickaGreska(Redak(), Stupac(), "typedef se smije pojavljivati samo u globalnom dosegu");
 		
 		Context().AliasiTipova()[m_alias] = m_tip;
-		return nullptr;
+		return llvm::Constant::getNullValue(llvm::Type::getInt32Ty(*Context().LLVMContext()));
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// IfElse
-	
+	// DONE
 	IfElse::IfElse(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) : 
 		IzrazAST(redak, stupac, std::move(djeca)) 
 	{}
 
-	IfElse::IfElse(IfElse const& drugi) : IzrazAST(drugi) {}
+	IfElse::IfElse(IfElse const& drugi) : 
+		IzrazAST(drugi) 
+	{}
+
+	void IfElse::Ispisi(std::ostream& out) const
+	{
+		out << "IfElse" << std::endl;
+		IspisiDjecu(out);
+	}
 
 	llvm::Value* IfElse::GenerirajKodIzraz()
 	{
 		// prvo kompajliramo uvjet
 		llvm::Value* uvjet = m_djeca.front()->GenerirajKodIzraz();
-		if (uvjet == nullptr)
-			return nullptr;
-
 		m_djeca.pop_front();
 
-		if (Context().PrevediTip(uvjet->getType()) != "bool")
-			throw SemantickaGreska(Redak(), Stupac(), "Uvjet u 'if'-naredbi mora biti tipa bool!");
+		ProvjeraVrijednosti(uvjet);
+		ProvjeraTipa(uvjet, Context().PrevediTip("bool"));
 
-		// pretvaramo vrijednost u bool tako da je uspoređujemo s 0.0
-		uvjet = Builder().CreateFCmpONE(uvjet, llvm::ConstantFP::get(*Context().LLVMContext(), llvm::APFloat(0.0)), "uvjet");
-
-		// dohvati funkciju u kojoj se "if" nalazi
+		// dohvati funkciju u kojoj se "if" nalazi i njen blok
+		//auto blokFunkcije = Context().TrenutniBlok();
 		llvm::Function* funkcija = Builder().GetInsertBlock()->getParent();
 
 		// napravimo blok s naredbama u slučaju true
@@ -593,16 +718,16 @@ namespace C0Compiler
 		// uđemo u if blok i popunimo ga
 		Builder().SetInsertPoint(ifTrueBlok);
 
-		llvm::Value *ifTrueVrijednost = m_djeca.front()->GenerirajKodIzraz();
+		llvm::Value *ifTrueVrijednost = m_djeca.front()->GenerirajKodIzraz(); 
 		if (ifTrueVrijednost == nullptr)
 			return nullptr;
 
 		m_djeca.pop_front();
-		bool imamElse = m_djeca.front().get() != nullptr;
-		Context().ZatvoriBlok();
+		bool imamElse = !m_djeca.empty();
 
 		// i bezuvjetno granamo u originalnu funkciju
 		Builder().CreateBr(nastavakBlok);
+		Context().ZatvoriBlok();
 		ifTrueBlok = Builder().GetInsertBlock();
 
 		// dodamo else blok
@@ -619,29 +744,34 @@ namespace C0Compiler
 			if (!elseVrijednost)
 				return nullptr;
 		}
-	
+
 		// granamo u originalnu funkciju
 		Builder().CreateBr(nastavakBlok);
 		elseBlok = Builder().GetInsertBlock();
-
+		Context().ZatvoriBlok();
+	
 		funkcija->getBasicBlockList().push_back(nastavakBlok);
 		Builder().SetInsertPoint(nastavakBlok);
 
-		Context().ZatvoriBlok();
-		Context().DodajBlok(nastavakBlok);
+		//Context().TrenutniBlok()->Roditelj(blokFunkcije);
+		// treba namjestiti da početni blok bude parent nastavku
 
-		// dodamo samo grananje u builder
-		llvm::PHINode* grananje = Builder().CreatePHI(llvm::Type::getDoubleTy(*Context().LLVMContext()), 2, "grananje");
-
-		// i dodamo mu grane
-		grananje->addIncoming(ifTrueVrijednost, ifTrueBlok);
-		grananje->addIncoming(elseVrijednost, elseBlok);
-		return grananje;
+		// phi čvor u builder. sad je void
+		//llvm::PHINode* phi = Builder().CreatePHI(llvm::Type::getVoidTy(*Context().LLVMContext()), 2);
+		//
+		//// i dodamo mu grane
+		//phi->addIncoming(ifTrueVrijednost, ifTrueBlok);
+		//
+		//if(elseVrijednost != nullptr)
+		//	phi->addIncoming(elseVrijednost, elseBlok);
+		//
+		//// LLVM vraćanje nullptr-a tretira kao grešku pa vraćam konstantu 0
+		//return llvm::Constant::getNullValue(llvm::Type::getInt32Ty(*Context().LLVMContext()));;
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// While
-
+	// DONE
 	While::While(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) : 
 		IzrazAST(redak, stupac, std::move(djeca)) 
 	{}
@@ -650,36 +780,43 @@ namespace C0Compiler
 		IzrazAST(drugi) 
 	{}
 
+	void While::Ispisi(std::ostream& out) const
+	{
+		out << "While" << std::endl;
+		IspisiDjecu(out);
+	}
+
 	llvm::Value* While::GenerirajKodIzraz()
 	{
-		// napravimo blok za tijelo petlje
 		llvm::Function* funkcija = Builder().GetInsertBlock()->getParent();
-		m_pocetakPetlje = llvm::BasicBlock::Create(*Context().LLVMContext(), "tijeloPetlje", funkcija);
-		Context().DodajBlok(m_pocetakPetlje);
 
-		// bezuvjetno granamo u tijelo petlje
-		Builder().CreateBr(m_pocetakPetlje);
-		Builder().SetInsertPoint(m_pocetakPetlje);
+		// inicijaliziramo blokove
+		m_uvjetPetlje = llvm::BasicBlock::Create(*Context().LLVMContext(), "uvjetPetlje", funkcija);
+		m_tijeloPetlje = llvm::BasicBlock::Create(*Context().LLVMContext(), "tijeloPetlje");
+		m_krajPetlje = llvm::BasicBlock::Create(*Context().LLVMContext(), "nastavakFunkcije");
+
+		// otvorimo blok za uvjet petlje
+		Builder().SetInsertPoint(m_uvjetPetlje);
 
 		// kompajliramo uvjet petlje
-		llvm::Value *uvjetZaustavljanja = m_djeca.front()->GenerirajKodIzraz();
-		if (uvjetZaustavljanja == nullptr)
+		llvm::Value *uvjetNastavka = m_djeca.front()->GenerirajKodIzraz();
+		if (uvjetNastavka == nullptr)
 			return nullptr;
 
-		if (Context().PrevediTip(uvjetZaustavljanja->getType()) != "bool")
-			throw SemantickaGreska(Redak(), Stupac(), "Uvjet u 'while'-petlji mora biti tipa bool!");
+		if (Context().PrevediTip(uvjetNastavka->getType()) != "bool")
+			throw SemantickaGreska(Redak(), Stupac(), "Uvjet u 'while'-petlji mora biti tipa bool");
 
 		m_djeca.pop_front();
-
-		// dodamo blok za dio funkcije koji slijedi nakon petlje
-		//llvm::BasicBlock* krajPetlje = Builder().GetInsertBlock();
-		m_krajPetlje = llvm::BasicBlock::Create(*Context().LLVMContext(), "nastavakFunkcije", funkcija);
-
 		// pretvaramo vrijednost u bool tako da je uspoređujemo s 0.0
-		uvjetZaustavljanja = Builder().CreateFCmpONE(uvjetZaustavljanja, llvm::ConstantFP::get(*Context().LLVMContext(), llvm::APFloat(0.0)), "uvjetZaustavljanja");
-		
-		// dodamo grananje na kraj bloka "krajPetlje"
-		Builder().CreateCondBr(uvjetZaustavljanja, m_pocetakPetlje, m_krajPetlje);
+		uvjetNastavka = Builder().CreateICmpNE(uvjetNastavka, llvm::ConstantInt::get(*Context().LLVMContext(), llvm::APInt(1, 0)), "uvjetNastava");
+
+		// ovisno o uvjetu, granamo u tijelo petlje ili na kraj petlje
+		Builder().CreateCondBr(uvjetNastavka, m_tijeloPetlje, m_krajPetlje);
+
+		// napravimo blok za tijelo petlje
+		Context().DodajBlok(m_tijeloPetlje);
+		funkcija->getBasicBlockList().push_back(m_tijeloPetlje);
+		Builder().SetInsertPoint(m_tijeloPetlje);
 
 		// kompajliramo tijelo petlje
 		llvm::Value* tijelo = m_djeca.front()->GenerirajKodIzraz();
@@ -688,13 +825,17 @@ namespace C0Compiler
 
 		m_djeca.pop_front();
 
+		// nakon što se izvrši tijelo petlje, bezuvjetno granamo u uvjet petlje
+		Builder().CreateBr(m_uvjetPetlje);
+
 		// zatvorimo blok s tijelom petlje te otvorimo blok koji slijedi
 		Context().ZatvoriBlok();
 		Context().DodajBlok(m_krajPetlje);
 		Builder().SetInsertPoint(m_krajPetlje);
+		funkcija->getBasicBlockList().push_back(m_krajPetlje);
 
 		// LLVM kaže da izraz while uvijek vraća 0 
-		return llvm::Constant::getNullValue(llvm::Type::getDoubleTy(*Context().LLVMContext()));
+		return llvm::Constant::getNullValue(llvm::Type::getInt32Ty(*Context().LLVMContext()));
 	}
 	
 	////////////////////////////////////////////////////////////////////////////////////
@@ -707,6 +848,12 @@ namespace C0Compiler
 	For::For(For const& drugi) 
 		: IzrazAST(drugi) 
 	{}
+
+	void For::Ispisi(std::ostream& out) const
+	{
+		out << "For" << std::endl;
+		IspisiDjecu(out);
+	}
 
 	llvm::Value* For::GenerirajKodIzraz()
 	{
@@ -737,17 +884,16 @@ namespace C0Compiler
 		Builder().SetInsertPoint(uvjetBlok);
 		
 		// generiramo kod za uvjet zaustavljanja
-		llvm::Value* uvjetZaustavljanja = m_djeca.front()->GenerirajKodIzraz();
-		if (uvjetZaustavljanja == nullptr)
+		llvm::Value* uvjetNastavka = m_djeca.front()->GenerirajKodIzraz();
+		m_djeca.pop_front();
+		if (uvjetNastavka == nullptr)
 			return nullptr;
 
-		if (Context().PrevediTip(uvjetZaustavljanja->getType()) != "bool")
-			throw SemantickaGreska(Redak(), Stupac(), "Uvjet u 'for'-petlji mora biti tipa bool!");
-
-		m_djeca.pop_front();
+		if (Context().PrevediTip(uvjetNastavka->getType()) != "bool")
+			throw SemantickaGreska(Redak(), Stupac(), "Uvjet u 'for'-petlji mora biti tipa bool");
 
 		// pretvaramo vrijednost u bool tako da je uspoređujemo s 0.0
-		uvjetZaustavljanja = Builder().CreateFCmpONE(uvjetZaustavljanja, llvm::ConstantFP::get(*Context().LLVMContext(), llvm::APFloat(0.0)), "uvjetZaustavljanja");
+		uvjetNastavka = Builder().CreateICmpNE(uvjetNastavka, llvm::ConstantInt::get(*Context().LLVMContext(), llvm::APInt(1, 0)), "uvjetNastavka");
 		
 		// dodajemo blokove za tijelo petlje, inkrement petlje te nastavak
 		// funkcije nakon završetka petlje (ali inkrement i nastavak još ne stavljamo u funkciju).
@@ -755,7 +901,7 @@ namespace C0Compiler
 		llvm::BasicBlock* tijeloPetlje = llvm::BasicBlock::Create(*Context().LLVMContext(), "tijeloPetlje", funkcija);
 		m_inkrement = llvm::BasicBlock::Create(*Context().LLVMContext(), "inkrementPetlje");
 		m_krajPetlje = llvm::BasicBlock::Create(*Context().LLVMContext(), "nastavakFunkcije");
-		Builder().CreateCondBr(uvjetZaustavljanja, tijeloPetlje, m_krajPetlje);
+		Builder().CreateCondBr(uvjetNastavka, tijeloPetlje, m_krajPetlje);
 
 		// zatvorimo uvjetBlok i otvorimo tijeloPetlje
 		Context().ZatvoriBlok();
@@ -768,8 +914,8 @@ namespace C0Compiler
 			return nullptr;
 
 		m_djeca.pop_front();
-		
-		// bezuvjetno granamo u inkrement blok
+
+		// iz tijela bezuvjetno granamo u inkrement blok
 		Builder().CreateBr(m_inkrement);
 
 		// zatvaramo tijeloPetlje i otvaramo inkrementBlok
@@ -804,7 +950,6 @@ namespace C0Compiler
 		//llvm::Value* sljedecaVrijednostBrojca = Builder().CreateFAdd(trenutnaVrijednostBrojaca, inkrement, "sljedecaVrijednostBrojaca");
 		//Builder().CreateStore(sljedecaVrijednostBrojca, brojac);
 
-
 		// dodamo blok za dio funkcije koji slijedi nakon petlje
 		//llvm::BasicBlock* krajPetlje = Builder().GetInsertBlock();
 		//Context().ZatvoriBlok();
@@ -813,7 +958,7 @@ namespace C0Compiler
 		//Context().DodajBlok(nakonPetlje);
 
 		//// dodamo grananje na kraj bloka "krajPetlje"
-		//Builder().CreateCondBr(uvjetZaustavljanja, tijeloPetlje, nakonPetlje);
+		//Builder().CreateCondBr(uvjetNastavka, tijeloPetlje, nakonPetlje);
 		//Builder().SetInsertPoint(nakonPetlje);
 
 		//brojac->addIncoming(sljedecaVrijednostBrojca, krajPetlje);
@@ -825,7 +970,7 @@ namespace C0Compiler
 		//	m_doseg->Imena().erase(imeBrojaca);
 
 		// LLVM kaže da izraz for uvijek vraća 0
-		return llvm::Constant::getNullValue(llvm::Type::getDoubleTy(*Context().LLVMContext()));
+		return llvm::Constant::getNullValue(llvm::Type::getInt32Ty(*Context().LLVMContext()));
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////
@@ -838,6 +983,12 @@ namespace C0Compiler
 	Return::Return(Return const& drugi) : 
 		IzrazAST(drugi) 
 	{}
+
+	void Return::Ispisi(std::ostream& out) const
+	{
+		out << "Return" << std::endl;
+		IspisiDjecu(out);
+	}
 
 	llvm::Value* Return::GenerirajKodIzraz() 
 	{
@@ -854,7 +1005,7 @@ namespace C0Compiler
 			std::stringstream poruka;
 			poruka << "Tip vrijednosti ne odgovara povratnom tipu funkcije! Dobio: '"
 				<< Context().PrevediTip(povratnaVrijednost->getType()) << "', a očekujem: '"
-				<< Context().PrevediTip(Builder().GetInsertBlock()->getParent()->getReturnType()) << "'.";
+				<< Context().PrevediTip(Builder().GetInsertBlock()->getParent()->getReturnType()) << "'";
 
 			throw new SemantickaGreska(Redak(), Stupac(), poruka.str());
 		}
@@ -865,7 +1016,7 @@ namespace C0Compiler
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// Break
-	
+	// DONE
 	Break::Break(int redak, int stupac) : 
 		IzrazAST(redak, stupac) 
 	{}
@@ -874,9 +1025,15 @@ namespace C0Compiler
 		IzrazAST(drugi) 
 	{}
 
+	void Break::Ispisi(std::ostream& out) const
+	{
+		out << "Break" << std::endl;
+		IspisiDjecu(out);
+	}
+
 	llvm::Value* Break::GenerirajKodIzraz() 
 	{ 
-		std::shared_ptr<AST> predakPetlja = getRoditelj();
+		AST* predakPetlja = Roditelj();
 
 		// zapamtimo typeid od For i While. ne pamtimo typeid od
 		// petlje pretka jer type_info ima izbrisan operator=
@@ -887,23 +1044,22 @@ namespace C0Compiler
 		while (typeid(*predakPetlja) != tipFor && typeid(*predakPetlja) != tipWhile)
 		{
 			// ako smo došli do korijena i nismo našli petlju, bacamo grešku
-			if (predakPetlja->isRoot())
-				throw new SemantickaGreska(Redak(), Stupac(), "Naredba break se ne nalazi u petlji.");
+			if (predakPetlja->IsRoot())
+				throw new SemantickaGreska(Redak(), Stupac(), "Naredba break se mora nalaziti u petlji");
 
 			// inače se penjemo jedan korak gore
-			predakPetlja = predakPetlja->getRoditelj();
+			predakPetlja = predakPetlja->Roditelj();
 		}
 		
 		// sad možemo zapamtiti tip petlje
 		type_info const& tipPetlja = typeid(*predakPetlja);
 
 		// ako je petlja For, skačemo van iz petlje na jedan način 
-		if (tipPetlja == tipFor)
-			Builder().CreateBr(std::dynamic_pointer_cast<For>(predakPetlja)->BlokNakonPetlje());
+		Builder().CreateBr(dynamic_cast<For*>(predakPetlja)->BlokNakonPetlje());
 		
 		// ako je petlja While, skačemo van iz petlje na drugi način
 		if (tipPetlja == tipWhile)
-			Builder().CreateBr(std::dynamic_pointer_cast<While>(predakPetlja)->KrajPetlje());
+			Builder().CreateBr(dynamic_cast<While*>(predakPetlja)->BlokNakonPetlje());
 
 		// povratna vrijednost nam je nebitna jer je ionako nigdje ne koristimo pa može nullptr
 		return nullptr; 
@@ -911,7 +1067,7 @@ namespace C0Compiler
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// Continue
-
+	// DONE
 	Continue::Continue(int redak, int stupac) : 
 		IzrazAST(redak, stupac) 
 	{}
@@ -920,9 +1076,15 @@ namespace C0Compiler
 		IzrazAST(drugi) 
 	{}
 
+	void Continue::Ispisi(std::ostream& out) const
+	{
+		out << "Continue" << std::endl;
+		IspisiDjecu(out);
+	}
+
 	llvm::Value* Continue::GenerirajKodIzraz() 
 	{
-		std::shared_ptr<AST> predakPetlja = getRoditelj();
+		AST* predakPetlja = Roditelj();
 
 		// zapamtimo typeid od For i While. ne pamtimo typeid od
 		// petlje pretka jer type_info ima izbrisan operator=
@@ -933,11 +1095,11 @@ namespace C0Compiler
 		while (typeid(*predakPetlja) != tipFor && typeid(*predakPetlja) != tipWhile)
 		{
 			// ako smo došli do korijena i nismo našli petlju, bacamo grešku
-			if (predakPetlja->isRoot())
-				throw new SemantickaGreska(Redak(), Stupac(), "Continue se ne nalazi u petlji.");
+			if (predakPetlja->IsRoot())
+				throw new SemantickaGreska(Redak(), Stupac(), "Continue se ne nalazi u petlji");
 
 			// inače se penjemo jedan korak gore
-			predakPetlja = predakPetlja->getRoditelj();
+			predakPetlja = predakPetlja->Roditelj();
 		}
 
 		// sad možemo zapamtiti tip petlje
@@ -945,18 +1107,59 @@ namespace C0Compiler
 
 		// ako je petlja For, skačemo na inkrement
 		if (tipPetlja == tipFor)
-			Builder().CreateBr(std::dynamic_pointer_cast<For>(predakPetlja)->BlokInkrement());
+			Builder().CreateBr(dynamic_cast<For*>(predakPetlja)->BlokInkrement());
 
-		// ako je petlja While, skačemo na provjeru uvjeta (početak petlje)
+		// ako je petlja While, skačemo na provjeru uvjeta
 		if (tipPetlja == tipWhile)
-			Builder().CreateBr(std::dynamic_pointer_cast<While>(predakPetlja)->PocetakPetlje());
+			Builder().CreateBr(dynamic_cast<While*>(predakPetlja)->UvjetPetlje());
 
 		// povratna vrijednost nam je nebitna jer je ionako nigdje ne koristimo pa može nullptr
 		return nullptr;
 	};
 
 	////////////////////////////////////////////////////////////////////////////////////
+	// Assert
+	// DONE
+	Assert::Assert(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) : 
+		IzrazAST(redak, stupac, std::move(djeca)) 
+	{}
+
+	Assert::Assert(Assert const& drugi) : 
+		IzrazAST(drugi) 
+	{}
+
+	void Assert::Ispisi(std::ostream& out) const
+	{
+		out << "Assert" << std::endl;
+		IspisiDjecu(out);
+	}
+	
+	llvm::Value* Assert::GenerirajKodIzraz()
+	{
+		// izračunamo vrijednost izraza
+		llvm::Value* uvjet = m_djeca.front()->GenerirajKodIzraz();
+		m_djeca.pop_front();
+
+		if(uvjet == nullptr)
+			throw SemantickaGreska(Redak(), Stupac(), "Uvjet u naredbi \"assert\" je neispravna vrijednost");
+
+		if (Context().PrevediTip(uvjet->getType()) != "bool")
+			throw SemantickaGreska(Redak(), Stupac(), "Uvjet u naredbi \"assert\" mora biti tipa bool");
+
+		// pripremimo tekst greške
+		std::stringstream tekstGreske;
+		tekstGreske << "Assert nije prošao! Redak: " << Redak() << ", Stupac: " << Stupac() << ".";
+
+		// i prijavimo je ako je uvjet false
+		ProvjeraUvjeta(uvjet, tekstGreske.str(), true);
+		
+		// i vratimo nullptr jer se ova vrijednost ne smije nigdje koristiti
+		return nullptr;
+	}
+
+	////////////////////////////////////////////////////////////////////////////////////
 	// Varijabla
+	// DONE
 
 	Varijabla::Varijabla(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) : 
 		IzrazAST(redak, stupac, std::move(djeca)),
@@ -970,12 +1173,18 @@ namespace C0Compiler
 		m_ime(drugi.m_ime)
 	{}
 
+	void Varijabla::Ispisi(std::ostream& out) const
+	{
+		out << "Varijabla (" << m_ime << ")" << std::endl;
+		IspisiDjecu(out);
+	}
+
 	llvm::Value* Varijabla::GenerirajKodIzraz()
 	{
 		llvm::Value* varijabla = Context().TrenutniBlok()->Trazi(m_ime);
 		if (varijabla == nullptr)
 		{
-			throw SemantickaGreska(Redak(), Stupac(), "Varijabla " + m_ime + " nije deklarirana.");
+			throw SemantickaGreska(Redak(), Stupac(), "Varijabla " + m_ime + " nije deklarirana");
 			return nullptr;
 		}
 
@@ -985,6 +1194,7 @@ namespace C0Compiler
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// DeklaracijaVarijable
+	// DONE
 
 	DeklaracijaVarijable::DeklaracijaVarijable(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) : 
 		IzrazAST(redak, stupac, std::move(djeca)) 
@@ -994,9 +1204,20 @@ namespace C0Compiler
 		: IzrazAST(drugi)
 	{}
 
+	void DeklaracijaVarijable::Ispisi(std::ostream& out) const
+	{
+		out << "DeklaracijaVarijable" << std::endl;
+		IspisiDjecu(out);
+	}
+
 	llvm::Value* DeklaracijaVarijable::GenerirajKodIzraz()
 	{
-		// iz dohvati tip, ime i pridruženu vrijednost varijabli (ako postoji)
+		bool statickaAlokacija = true;
+		// dohvati tip, ime i pridruženu vrijednost varijabli (ako postoji)
+		// dohvatit ćemo samo i tip kao std::string. ovdje koristimo činjenicu da
+		// pri deklaraciji varijable lijevo od njenog imena može biti samo ime tipa
+		// i ništa drugo
+		std::string tipSlovima = *std::dynamic_pointer_cast<Tip>(m_djeca.front());
 		llvm::Type* tip = m_djeca.front()->GenerirajKodTip();
 		m_djeca.pop_front();
 
@@ -1004,46 +1225,65 @@ namespace C0Compiler
 		m_djeca.pop_front();
 
 		if (Context().LokalneVarijable().find(ime) != Context().LokalneVarijable().end())
-			throw SemantickaGreska(Redak(), Stupac(), "Varijabla " + ime + " je već deklarirana.");
+			throw SemantickaGreska(Redak(), Stupac(), "Varijabla " + ime + " je već deklarirana");
 
 		llvm::Function* funkcija = Builder().GetInsertBlock()->getParent();
 		llvm::Value* inicijalnaVrijednost = nullptr;
 
 		// ako imamo inicijalnu vrijednost, kompajliramo je
 		if (!m_djeca.empty())
-			inicijalnaVrijednost = m_djeca.front()->GenerirajKodIzraz();
+		{
+			// provjerimo je li s desne strane alloc ili alloc_array. 
+			// ako da, onda se radi o dinamičkoj alokaciji
+			if (std::dynamic_pointer_cast<Alokacija>(m_djeca.front()) != nullptr ||
+				std::dynamic_pointer_cast<AlokacijaArray>(m_djeca.front()) != nullptr)
+				statickaAlokacija = false;
 
+			inicijalnaVrijednost = m_djeca.front()->GenerirajKodIzraz();
+			std::string tipDesno = Context().PrevediTip(inicijalnaVrijednost->getType());
+		
+			if (tipDesno != tipSlovima)
+				throw SemantickaGreska(Redak(), Stupac(), "Varijabla tipa " + tipSlovima +
+					" ne može biti inicijalizirana vrijednošću tipa " + tipDesno);
+		}
+		
 		// ako ne, koristimo defaultnu ovisno o tipu (C0)
-		else if (Context().PrevediTip(tip) == "int")
+		else if (tipSlovima == "int")
 			inicijalnaVrijednost = llvm::ConstantInt::get(Context().PrevediTip("int"), 0, true);
 
-		else if (Context().PrevediTip(tip) == "char")
+		else if (tipSlovima == "char")
 			inicijalnaVrijednost = llvm::ConstantInt::get(Context().PrevediTip("char"), '\0');
 
-		else if (Context().PrevediTip(tip) == "bool")
+		else if (tipSlovima == "bool")
 			inicijalnaVrijednost = llvm::ConstantInt::get(Context().PrevediTip("bool"), 0);
 
-		else if (Context().PrevediTip(tip) == "string")
-			inicijalnaVrijednost = llvm::ConstantDataArray::getString(*Context().LLVMContext(), "");
+		else if (tipSlovima == "string")
+		{
+			// string literale je teže konstruirati od ostalih literala pa ćemo taj posao outsource-ati
+			// klasi StringLiteral
+			StringLiteral literal(Token(STRLIT, "", Redak(), Stupac()));
+			inicijalnaVrijednost = literal.GenerirajKodIzraz();
+		}
 
-		else if (Context().PrevediTip(tip) == "int*")
-			inicijalnaVrijednost = llvm::ConstantPointerNull::get(static_cast<llvm::PointerType*>(Context().PrevediTip("int*")));
-
-		else if (Context().PrevediTip(tip) == "char*")
-			inicijalnaVrijednost = llvm::ConstantPointerNull::get(static_cast<llvm::PointerType*>(Context().PrevediTip("char*")));
-
-		else if (Context().PrevediTip(tip) == "bool*")
-			inicijalnaVrijednost = llvm::ConstantPointerNull::get(static_cast<llvm::PointerType*>(Context().PrevediTip("bool*")));
-
-		else if (Context().PrevediTip(tip) == "string*")
-			inicijalnaVrijednost = llvm::ConstantPointerNull::get(static_cast<llvm::PointerType*>(Context().PrevediTip("string*")));
+		// ako završava na *, onda mu je defaultna vrijednost nullptr
+		else if (tipSlovima[tipSlovima.size()-1] == '*')
+			inicijalnaVrijednost = llvm::ConstantPointerNull::get(static_cast<llvm::PointerType*>(tip));
 
 		// dodamo stack alokaciju varijable
-		llvm::AllocaInst* alokacija = Context().StackAlokacija(funkcija, tip, ime);
-		Builder().CreateStore(inicijalnaVrijednost, alokacija);
-		Context().LokalneVarijable()[ime] = alokacija;
+		llvm::Value* vrijednost;
+		if (statickaAlokacija)
+		{
+			llvm::AllocaInst* alokacija = Context().StackAlokacija(funkcija, tip, ime);
+			Builder().CreateStore(inicijalnaVrijednost, alokacija);
+			vrijednost = alokacija;
+		}
+		else
+			vrijednost = inicijalnaVrijednost;
 
-		return alokacija;
+		if(Context().TrenutniBlok()->Dodaj(vrijednost, ime) == nullptr)
+			throw SemantickaGreska(Redak(), Stupac(), "Varijabla imena " + ime + " je već deklarirana.");
+			
+		return vrijednost;
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////
@@ -1057,9 +1297,18 @@ namespace C0Compiler
 		IzrazAST(drugi) 
 	{}
 
+	void TernarniOperator::Ispisi(std::ostream& out) const
+	{
+		out << "TernarniOperator" << std::endl;
+		IspisiDjecu(out);
+	}
+
 	llvm::Value* TernarniOperator::GenerirajKodIzraz()
 	{	
-		// implementiramo ga kao if-else jer ne vidim pametniji način kako bih to napravio
+		// implementiramo ga kao if-else jer ne vidim pametniji način kako bih to napravio.
+
+		// popišemo stvari koje će nam trebati kasnije
+		llvm::BasicBlock* trenutniBlok = Builder().GetInsertBlock();
 		llvm::Value* uvjet = std::dynamic_pointer_cast<IzrazAST>(m_djeca.front())->GenerirajKodIzraz();
 		m_djeca.pop_front();
 		llvm::Value* granaTrue = std::dynamic_pointer_cast<IzrazAST>(m_djeca.front())->GenerirajKodIzraz();
@@ -1070,14 +1319,14 @@ namespace C0Compiler
 		// LLVM nema ternarni operator pa ga implementiramo sami:
 		// 1. bacamo grešku ako izrazi koje operator vraća nisu istog tipa
 		if (granaTrue->getType() != granaFalse->getType())
-			throw SemantickaGreska(Redak(), Stupac(), "Izrazi koje operator ?: vraća nisu istog tipa.");
+			throw SemantickaGreska(Redak(), Stupac(), "Izrazi koje operator ?: vraća nisu istog tipa");
 
 		// 2. saznamo kojeg su izrazi tipa
 		llvm::Type* tipIzraza = granaTrue->getType();
 
 		// 3. inkrementiramo statički brojač, tako da nemamo konflikte između ternarnih operatora
-		static int brojac = 0;
-		std::string imeOperatora = "__ternarniOperator" + std::to_string(brojac) + "__";
+		static int brojac = 1;
+		std::string imeOperatora = "operator?:" + std::to_string(brojac);
 		++brojac;
 
 		// 4. deklariramo funkciju tipa tipIzraza(bool, tipIzraza, tipIzraza) 
@@ -1091,41 +1340,65 @@ namespace C0Compiler
 		llvm::FunctionType* tipOperatora = llvm::FunctionType::get(tipIzraza, tipoviArugmenata, false);
 		llvm::Function* ternarniOperator = llvm::Function::Create(tipOperatora, llvm::Function::ExternalLinkage, imeOperatora, Module().get());
 		
-		// 5. implementiramo ternarni operator kao if(uvjet) return granaTrue; else return granaFalse;
+		// 5. dodamo imena argumentima za lakše čitanje LLVM IR-a
+		llvm::Function::arg_iterator it = ternarniOperator->arg_begin();
+		it->setName(imeOperatora + " uvjet");
+		++it;
+		it->setName(imeOperatora + " vrijednostTrue");
+		++it;
+		it->setName(imeOperatora + " vrijednostFalse");
+
+		// 6. implementiramo ternarni operator kao if(uvjet) return granaTrue; else return granaFalse;
 		llvm::BasicBlock* tijeloOperatora = llvm::BasicBlock::Create(*Context().LLVMContext(), imeOperatora, ternarniOperator);
 		Builder().SetInsertPoint(tijeloOperatora);
 
-		uvjet = Builder().CreateFCmpONE(uvjet, llvm::ConstantFP::get(*Context().LLVMContext(), llvm::APFloat(0.0)), "uvjet");
+		llvm::Argument* argumentPoziva = ternarniOperator->args().begin();
+		llvm::Value* uvjetUFunkciji = Builder().CreateICmpNE(argumentPoziva, llvm::ConstantInt::get(*Context().LLVMContext(), llvm::APInt(1, 0)), "uvjet");
+		++argumentPoziva;
+		llvm::Value* granaTrueUFunkciji = argumentPoziva;
+		++argumentPoziva;
+		llvm::Value* granaFalseUFunkciji = argumentPoziva;
 		llvm::BasicBlock* blokTrue = llvm::BasicBlock::Create(*Context().LLVMContext(), "granaTrue", ternarniOperator);
 		llvm::BasicBlock* blokFalse = llvm::BasicBlock::Create(*Context().LLVMContext(), "granaFalse");
 		
-		Builder().CreateCondBr(uvjet, blokTrue, blokFalse);
+		Builder().CreateCondBr(uvjetUFunkciji, blokTrue, blokFalse);
 		Builder().SetInsertPoint(blokTrue);
-		Builder().CreateRet(granaTrue);
+		Builder().CreateRet(granaTrueUFunkciji);
 		blokTrue = Builder().GetInsertBlock();
 
 		ternarniOperator->getBasicBlockList().push_back(blokFalse);
 		Builder().SetInsertPoint(blokFalse);
-		Builder().CreateRet(granaFalse);
+		Builder().CreateRet(granaFalseUFunkciji);
 		blokFalse = Builder().GetInsertBlock();
 
-		llvm::PHINode* grananje = Builder().CreatePHI(llvm::Type::getDoubleTy(*Context().LLVMContext()), 2, "grananje");
-		grananje->addIncoming(granaTrue, blokTrue);
-		grananje->addIncoming(granaFalse, blokFalse);
+		// budući da granaTrue i granaFalse provjereno imaju isti tip, možemo bez problema obećati
+		// da će obje grane imati tip kao granaTrue
+		//llvm::PHINode* grananje = Builder().CreatePHI(granaTrue->getType(), 2, "grananje");
+		//grananje->addIncoming(granaTrue, blokTrue);
+		//grananje->addIncoming(granaFalse, blokFalse);
 
-		// 6. pozovemo funkciju __ternarniOperator<brojac>__
+		// 7. vratimo insert point natrag u funkciju iz koje smo došli
+		Builder().SetInsertPoint(trenutniBlok);
+		
+		// 8. verify-amo funkciju
+		std::string error;
+		llvm::raw_string_ostream errorStream(error);
+		llvm::verifyFunction(*ternarniOperator, &errorStream);
+
+		// 9. pozovemo funkciju __ternarniOperator<brojac>__
 		std::vector<llvm::Value*> argumentiZaPoziv;
 		argumentiZaPoziv.push_back(uvjet);
 		argumentiZaPoziv.push_back(granaTrue);
 		argumentiZaPoziv.push_back(granaFalse);
+		llvm::Value* poziv = llvm::CallInst::Create(ternarniOperator, argumentiZaPoziv, imeOperatora, Context().TrenutniBlok()->Sadrzaj());
 
-		// 7. vratimo ono što vrati poziv ternarnog operatora
-		return llvm::CallInst::Create(ternarniOperator, argumentiZaPoziv, "", Context().TrenutniBlok()->Sadrzaj());
+		// 10. vratimo ono što vrati taj poziv 
+		return poziv;
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// LogickiOperator
-
+	// DONE
 	LogickiOperator::LogickiOperator(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) : 
 		IzrazAST(redak, stupac, std::move(djeca)) 
 	{}
@@ -1134,102 +1407,117 @@ namespace C0Compiler
 		IzrazAST(drugi) 
 	{}
 
+	void LogickiOperator::Ispisi(std::ostream& out) const
+	{
+		out << "LogickiOperator" << std::endl;
+		IspisiDjecu(out);
+	}
+
 	// manje-više ista stvar kao bitwise operatori, osim što
 	// rade samo s jednim bitom (jer sam tako implementirao bool)
 	llvm::Value* LogickiOperator::GenerirajKodIzraz()
 	{
 		llvm::Value* lijevo = m_djeca.front()->GenerirajKodIzraz();
 		if (Context().PrevediTip(lijevo->getType()) != "bool")
-			throw SemantickaGreska(m_djeca.front()->Redak(), m_djeca.front()->Stupac(), "Prvi operand logičkog operatora mora biti tipa bool.");
-		
+			throw SemantickaGreska(m_djeca.front()->Redak(), m_djeca.front()->Stupac(), "Prvi operand logičkog operatora mora biti tipa bool");
 		m_djeca.pop_front();
 
 		llvm::Value* desno = m_djeca.front()->GenerirajKodIzraz();
 		if (Context().PrevediTip(desno->getType()) != "bool")
-			throw SemantickaGreska(m_djeca.front()->Redak(), m_djeca.front()->Stupac(), "Drugi operand logičkog operatora mora biti tipa bool.");
-
+			throw SemantickaGreska(m_djeca.front()->Redak(), m_djeca.front()->Stupac(), "Drugi operand logičkog operatora mora biti tipa bool");
 		m_djeca.pop_front();
 
-		if (lijevo == nullptr || desno == nullptr)
-			// ili baci grešku?
-			return nullptr;
+		if (lijevo == nullptr)
+			throw SemantickaGreska(Redak(), Stupac(), "S lijeve strane operatora je neispravna vrijednost"); 
 
+		if (desno == nullptr)
+			throw SemantickaGreska(Redak(), Stupac(), "S desne strane operatora je neispravna vrijednost");
+
+		std::string lijevoTip = Context().PrevediTip(lijevo->getType());
+		std::string desnoTip = Context().PrevediTip(lijevo->getType());
+		
 		Leaf const& operacija = *std::dynamic_pointer_cast<Leaf>(m_djeca.front());
-		std::string imeOperatora;
+
+		if(lijevoTip != "bool" || desnoTip != "bool" )
+			throw SemantickaGreska(Redak(), Stupac(), "Operandi operatora " + operacija.Sadrzaj() + " moraju biti tipa int");
 
 		switch (operacija.TipTokena())
 		{
 			case LAND:
-				imeOperatora = "ogickiAnd";
-				lijevo = Builder().CreateAnd(lijevo, desno, "l" + imeOperatora);
+				return Builder().CreateAnd(lijevo, desno, "logickiAnd");
 				break;
 
 			case LOR:
-				imeOperatora = "ogickiOr";
-				lijevo = Builder().CreateOr(lijevo, desno, "l" + imeOperatora);
+				return Builder().CreateOr(lijevo, desno, "logickiOr");
 				break;
 		}
 		// pretvorimo bool u broj 0.0 ili 1.0 (jer LLVM tako kaže)
-		return Builder().CreateUIToFP(lijevo, llvm::Type::getDoubleTy(*Context().LLVMContext().get()), "rezultatL" + imeOperatora);
-
+		//return Builder().CreateUIToFP(lijevo, llvm::Type::getInt1Ty(*Context().LLVMContext().get()), "rezultatL" + imeOperatora);
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// BitovniOperator
 
-	BitovniOperator::BitovniOperator(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) : 
-		IzrazAST(redak, stupac, std::move(djeca)) 
-	{}
+	// ovo su sad binarni operatori
+	//BitovniOperator::BitovniOperator(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) : 
+	//	IzrazAST(redak, stupac, std::move(djeca)) 
+	//{}
 
-	BitovniOperator::BitovniOperator(BitovniOperator const& drugi) : 
-		IzrazAST(drugi) 
-	{}
+	//BitovniOperator::BitovniOperator(BitovniOperator const& drugi) : 
+	//	IzrazAST(drugi) 
+	//{}
 
-	llvm::Value* BitovniOperator::GenerirajKodIzraz()
-	{
-		llvm::Value* lijevo = m_djeca.front()->GenerirajKodIzraz();
-		if (lijevo->getType() != Context().PrevediTip("int"))
-			throw SemantickaGreska(m_djeca.front()->Redak(), m_djeca.front()->Stupac(), "Prvi argument bitovnog operatora mora biti tipa int.");
-		
-		m_djeca.pop_front();
+	//void BitovniOperator::Ispisi(std::ostream& out) const
+	//{
+	//	out << "BitovniOperator" << std::endl;
+	//	IspisiDjecu(out);
+	//}
 
-		llvm::Value* desno = m_djeca.front()->GenerirajKodIzraz();
-		if (desno->getType() != Context().PrevediTip("int"))
-			throw SemantickaGreska(m_djeca.front()->Redak(), m_djeca.front()->Stupac(), "Drugi argument bitovnog operatora mora biti tipa int.");
+	//llvm::Value* BitovniOperator::GenerirajKodIzraz()
+	//{
+	//	llvm::Value* lijevo = m_djeca.front()->GenerirajKodIzraz();
+	//	if (lijevo->getType() != Context().PrevediTip("int"))
+	//		throw SemantickaGreska(m_djeca.front()->Redak(), m_djeca.front()->Stupac(), "Prvi argument bitovnog operatora mora biti tipa int");
+	//	
+	//	m_djeca.pop_front();
 
-		m_djeca.pop_front();
+	//	llvm::Value* desno = m_djeca.front()->GenerirajKodIzraz();
+	//	if (desno->getType() != Context().PrevediTip("int"))
+	//		throw SemantickaGreska(m_djeca.front()->Redak(), m_djeca.front()->Stupac(), "Drugi argument bitovnog operatora mora biti tipa int");
 
-		if (lijevo == nullptr || desno == nullptr)
-			// ili baci grešku?
-			return nullptr;
+	//	m_djeca.pop_front();
 
-		Leaf const& operacija = *std::dynamic_pointer_cast<Leaf>(m_djeca.front());
-		std::string imeOperatora;
+	//	if (lijevo == nullptr || desno == nullptr)
+	//		// ili baci grešku?
+	//		return nullptr;
 
-		switch (operacija.TipTokena())
-		{
-			case BITAND:
-				imeOperatora = "itAnd";
-				lijevo = Builder().CreateAnd(lijevo, desno, "b" + imeOperatora);
-				break;
+	//	Leaf const& operacija = *std::dynamic_pointer_cast<Leaf>(m_djeca.front());
+	//	std::string imeOperatora;
 
-			case BITOR:
-				imeOperatora = "itOr";
-				lijevo = Builder().CreateOr(lijevo, desno, "b" + imeOperatora);
-				break;
+	//	switch (operacija.TipTokena())
+	//	{
+	//		case BITAND:
+	//			imeOperatora = "itAnd";
+	//			lijevo = Builder().CreateAnd(lijevo, desno, "b" + imeOperatora);
+	//			break;
 
-			case BITXOR:
-				imeOperatora = "itXor";
-				lijevo = Builder().CreateXor(lijevo, desno, "b" + imeOperatora);
-				break;
-		}
-		// pretvorimo bool u broj 0.0 ili 1.0
-		return Builder().CreateUIToFP(lijevo, llvm::Type::getDoubleTy(*Context().LLVMContext().get()), "rezultatB" + imeOperatora);
-	}
+	//		case BITOR:
+	//			imeOperatora = "itOr";
+	//			lijevo = Builder().CreateOr(lijevo, desno, "b" + imeOperatora);
+	//			break;
+
+	//		case BITXOR:
+	//			imeOperatora = "itXor";
+	//			lijevo = Builder().CreateXor(lijevo, desno, "b" + imeOperatora);
+	//			break;
+	//	}
+	//	// pretvorimo bool u broj 0.0 ili 1.0
+	//	return Builder().CreateUIToFP(lijevo, llvm::Type::getInt1Ty(*Context().LLVMContext().get()), "rezultatB" + imeOperatora);
+	//}
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// OperatorJednakost
-
+	// DONE
 	OperatorJednakost::OperatorJednakost(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) : 
 		IzrazAST(redak, stupac, std::move(djeca)) 
 	{}
@@ -1237,6 +1525,12 @@ namespace C0Compiler
 	OperatorJednakost::OperatorJednakost(OperatorJednakost const& drugi) : 
 		IzrazAST(drugi) 
 	{}
+
+	void OperatorJednakost::Ispisi(std::ostream& out) const
+	{
+		out << "OperatorJednakost" << std::endl;
+		IspisiDjecu(out);
+	}
 
 	llvm::Value* OperatorJednakost::GenerirajKodIzraz()
 	{
@@ -1260,17 +1554,17 @@ namespace C0Compiler
 				break;
 
 			case EQ:
-				imeOperatora = "Jedako";
+				imeOperatora = "Jednako";
 				lijevo = Builder().CreateICmpEQ(lijevo, desno, "usporedba" + imeOperatora);
 				break;
 		}
 		// pretvorimo bool u broj 0.0 ili 1.0
-		return Builder().CreateUIToFP(lijevo, llvm::Type::getDoubleTy(*Context().LLVMContext().get()), "rezultat" + imeOperatora);
+		return Builder().CreateUIToFP(lijevo, llvm::Type::getInt1Ty(*Context().LLVMContext().get()), "rezultat" + imeOperatora);
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// OperatorUsporedbe
-
+	// DONE
 	OperatorUsporedbe::OperatorUsporedbe(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) : 
 		IzrazAST(redak, stupac, std::move(djeca)) 
 	{}
@@ -1279,50 +1573,45 @@ namespace C0Compiler
 		IzrazAST(drugi) 
 	{}
 
+	void OperatorUsporedbe::Ispisi(std::ostream& out) const
+	{
+		out << "OperatorUsporedbe" << std::endl;
+		IspisiDjecu(out);
+	}
+
 	llvm::Value* OperatorUsporedbe::GenerirajKodIzraz()
 	{
 		llvm::Value* lijevo = m_djeca.front()->GenerirajKodIzraz();
 		m_djeca.pop_front();
-
 		llvm::Value* desno = m_djeca.front()->GenerirajKodIzraz();
 		m_djeca.pop_front();
 
-		if (lijevo == nullptr || desno == nullptr)
-			// ili baci grešku?
-			return nullptr;
+		Leaf operacija = *std::dynamic_pointer_cast<Leaf>(m_djeca.front());
+		m_djeca.pop_front();
 
-		Leaf const& operacija = *std::dynamic_pointer_cast<Leaf>(m_djeca.front());
-		std::string imeOperatora;
+		ProvjeraVrijednosti(lijevo, desno, operacija.Sadrzaj());
+		ProvjeraTipa(lijevo, Context().PrevediTip("int"));
+		ProvjeraTipa(desno, Context().PrevediTip("int"));
+
 		switch (operacija.TipTokena())
 		{
 			case LESS:
-				imeOperatora = "Manje";
-				lijevo = Builder().CreateICmpSLT(lijevo, desno, "usporedba" + imeOperatora);
-				break;
+				return Builder().CreateICmpSLT(lijevo, desno, "usporedbaManje");
 				
 			case LESSEQ:
-				imeOperatora = "ManjeJednako";
-				lijevo = Builder().CreateICmpSLE(lijevo, desno, "usporedba" + imeOperatora);
-				break;
+				return Builder().CreateICmpSLE(lijevo, desno, "usporedbaManjeJednako");
 
 			case GRT:
-				imeOperatora = "Vece";
-				lijevo = Builder().CreateICmpSGT(lijevo, desno, "usporedba" + imeOperatora);
-				break;
+				return Builder().CreateICmpSGT(lijevo, desno, "usporedbaVece");
 
 			case GRTEQ:
-				imeOperatora = "VeceJednako";
-				lijevo = Builder().CreateICmpSGE(lijevo, desno, "usporedba" + imeOperatora);
-				break;
+				return Builder().CreateICmpSGE(lijevo, desno, "usporedbaVeceJednako");
 		}
-
-		// pretvorimo bool u broj 0.0 ili 1.0
-		return Builder().CreateUIToFP(lijevo, llvm::Type::getDoubleTy(*Context().LLVMContext().get()), "rezultat" + imeOperatora);
 	}
 	
 	////////////////////////////////////////////////////////////////////////////////////
 	// BinarniOperator
-
+	// DONE
 	BinarniOperator::BinarniOperator(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) :
 		IzrazAST(redak, stupac, std::move(djeca))
 	{}
@@ -1331,6 +1620,12 @@ namespace C0Compiler
 		IzrazAST(drugi)
 	{}
 
+	void BinarniOperator::Ispisi(std::ostream& out) const
+	{
+		out << "BinarniOperator" << std::endl;
+		IspisiDjecu(out);
+	}
+
 	llvm::Value* BinarniOperator::GenerirajKodIzraz()
 	{
 		llvm::Value* lijevo = m_djeca.front()->GenerirajKodIzraz();
@@ -1338,12 +1633,22 @@ namespace C0Compiler
 
 		llvm::Value* desno = m_djeca.front()->GenerirajKodIzraz();
 		m_djeca.pop_front();
+		desno->getName();
 
-		if (lijevo == nullptr || desno == nullptr)
-			// ili baci grešku?
-			return nullptr;
+		if (lijevo == nullptr)
+			throw SemantickaGreska(Redak(), Stupac(), "S lijeve strane operatora je neispravna vrijednost"); 
 
+		if (desno == nullptr)
+			throw SemantickaGreska(Redak(), Stupac(), "S desne strane operatora je neispravna vrijednost");
+
+		std::string lijevoTip = Context().PrevediTip(lijevo->getType());
+		std::string desnoTip = Context().PrevediTip(lijevo->getType());
+		
 		Leaf const& operacija = *std::dynamic_pointer_cast<Leaf>(m_djeca.front());
+
+		if(lijevoTip != "int" || desnoTip != "int" )
+			throw SemantickaGreska(Redak(), Stupac(), "Operandi operatora " + operacija.Sadrzaj() + " moraju biti tipa int");
+
 		switch (operacija.TipTokena())
 		{
 			case PLUS:
@@ -1358,30 +1663,51 @@ namespace C0Compiler
 			case SLASH:
 				return Builder().CreateSDiv(lijevo, desno, "dijeljenje");
 
+			case MOD:
+				return Builder().CreateSRem(lijevo, desno, "modulo");
+
+			case BITAND:
+				return Builder().CreateAnd(lijevo, desno, "bitAnd");
+
+			case BITOR:
+				return Builder().CreateOr(lijevo, desno, "bitOr");
+
+			case BITXOR:
+				return Builder().CreateXor(lijevo, desno, "bitXor");
+
 			case LSHIFT:
 			{
-				// castamo desni broj u constant int, zatim u int i napokon ga reduciramo modulo 32 jer
-				// C0 uzima samo 5 najmanje značajnih znamenki drugog argumenta
-				int smanjenDesni = llvm::dyn_cast<llvm::ConstantInt>(desno)->getValue().getSExtValue() % 32;
-				return Builder().CreateShl(lijevo, smanjenDesni, "lijeviPomak");
+				// provjeravamo je li desni između 0 i 32 i dižemo iznimku ako nije
+				llvm::Value* nula = llvm::ConstantInt::get(*Context().LLVMContext(), llvm::APInt(32, 0, true));
+				llvm::Value* tridesetDva = llvm::ConstantInt::get(*Context().LLVMContext(), llvm::APInt(32, 32, true));
+				llvm::Value* desniVeciOd0 = Builder().CreateICmpSGT(desno, nula);
+				llvm::Value* desniManjiOd32 = Builder().CreateICmpSLT(desno, tridesetDva);
+				ProvjeraUvjeta(desniVeciOd0, "Drugi operand lijevog pomaka mora biti veći od 0");
+				ProvjeraUvjeta(desniManjiOd32, "Drugi operand lijevog pomaka mora biti manji od 32");
+				
+				return Builder().CreateShl(lijevo, desno, "lijeviPomak");
 			}
 			case RSHIFT:
 			{
 				// vidi gore
-				int smanjenDesni = llvm::dyn_cast<llvm::ConstantInt>(desno)->getValue().getSExtValue() % 32;
-				return Builder().CreateAShr(lijevo, smanjenDesni, "desniPomak");
+				llvm::Value* nula = llvm::ConstantInt::get(*Context().LLVMContext(), llvm::APInt(32, 0, true));
+				llvm::Value* tridesetDva = llvm::ConstantInt::get(*Context().LLVMContext(), llvm::APInt(32, 32, true));
+				llvm::Value* desniVeciOd0 = Builder().CreateICmpSGT(desno, nula);
+				llvm::Value* desniManjiOd32 = Builder().CreateICmpSLT(desno, tridesetDva);
+				ProvjeraUvjeta(desniVeciOd0, "Drugi operand desnog pomaka mora biti veći od 0");
+				ProvjeraUvjeta(desniManjiOd32, "Drugi operand desnog pomaka mora biti manji od 32");
+
+				return Builder().CreateAShr(lijevo, desno, "desniPomak");
 			}
-			case MOD:
-				return Builder().CreateSRem(lijevo, desno, "modulo"); // nadam se da je srem signed remainder
 
 			default:
-				throw SemantickaGreska(Redak(), Stupac(), "Nepoznat binarni operator!");
+				throw SemantickaGreska(Redak(), Stupac(), "Nepoznat binarni operator");
 		}
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// OperatorPridruzivanja
-
+	// DONE
 	OperatorPridruzivanja::OperatorPridruzivanja(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) : 
 		IzrazAST(redak, stupac, std::move(djeca)) 
 	{}
@@ -1389,6 +1715,12 @@ namespace C0Compiler
 	OperatorPridruzivanja::OperatorPridruzivanja(OperatorPridruzivanja const& drugi) : 
 		IzrazAST(drugi) 
 	{}
+
+	void OperatorPridruzivanja::Ispisi(std::ostream& out) const
+	{
+		out << "OperatorPridruzivanja" << std::endl;
+		IspisiDjecu(out);
+	}
 
 	llvm::Value* OperatorPridruzivanja::GenerirajKodIzraz()
 	{
@@ -1400,28 +1732,43 @@ namespace C0Compiler
 			tipLijevo != typeid(Strelica) &&
 			tipLijevo != typeid(Tocka))
 		{
-			throw SemantickaGreska(Redak(), Stupac(), "S lijeve strane operatora pridruživanja mora biti lijeva vrijednost.");
+			throw SemantickaGreska(Redak(), Stupac(), "Prvi operand operatora pridruživanja mora biti lijeva vrijednost");
 		}
 
-		// kompajliramo lijevu stranu
-		llvm::Value* lijevo = m_djeca.front()->GenerirajKodIzraz();
+		// dohvatimo lijevu stranu (još ne kompajliramo) i maknemo je iz popisa djece
+		std::shared_ptr<AST> lijevaStrana = m_djeca.front();
 		m_djeca.pop_front();
-
+		
 		// kompajliramo desnu stranu
 		llvm::Value* desno = m_djeca.front()->GenerirajKodIzraz();
 		m_djeca.pop_front();
 
-		if (desno == nullptr)
-				return nullptr;
+		// zatim kompajliramo lijevu stranu
+		llvm::Value* lijevo;
+		llvm::Value* adresaLijevog;
 
-		// dohvati poznatu vrijednost lijeve strane
-		Builder().CreateLoad(lijevo, lijevo->getName());
-		if (lijevo == nullptr)
-			throw SemantickaGreska(Redak(), Stupac(), "Varijabla " + std::string(lijevo->getName()) + " nije deklarirana.");
 
-		Leaf const& operacija = *std::dynamic_pointer_cast<Leaf>(m_djeca.front());
+		// ako je s lijeve strane varijabla, onda preko njenog imena dohvatimo njenu adresu
+		if (tipLijevo == typeid(Varijabla))
+		{
+			lijevo = lijevaStrana->GenerirajKodIzraz();
+			std::string lijevoIme = Context().TrenutniBlok()->Trazi(lijevo);
+			adresaLijevog = Context().TrenutniBlok()->Trazi(lijevoIme);
+		}
+		// inače je dobijemo od operatora
+		else
+		{
+			adresaLijevog = lijevaStrana->GenerirajKodIzraz();
+			lijevo = Builder().CreateLoad(adresaLijevog, "dereferenciranjeAdrese");
+		}
+
+		ProvjeraVrijednosti(lijevo);
+		ProvjeraVrijednosti(desno);
+		ProvjeraTipa(desno, lijevo->getType());
 
 		llvm::Value* novoLijevo;
+		Leaf const& operacija = *std::dynamic_pointer_cast<Leaf>(m_djeca.front());
+
 		switch (operacija.TipTokena())
 		{
 			case ASSIGN:
@@ -1450,15 +1797,27 @@ namespace C0Compiler
 
 			case LSHIFTEQ:
 			{
-				int smanjenDesni = llvm::dyn_cast<llvm::ConstantInt>(desno)->getValue().getSExtValue() % 32;
-				novoLijevo = Builder().CreateShl(lijevo, smanjenDesni);
-				break;
+				// provjeravamo je li desni između 0 i 32 i dižemo iznimku ako nije
+				llvm::Value* nula = llvm::ConstantInt::get(*Context().LLVMContext(), llvm::APInt(32, 0, true));
+				llvm::Value* tridesetDva = llvm::ConstantInt::get(*Context().LLVMContext(), llvm::APInt(32, 32, true));
+				llvm::Value* desniVeciOd0 = Builder().CreateICmpSGT(desno, nula);
+				llvm::Value* desniManjiOd32 = Builder().CreateICmpSLT(desno, tridesetDva);
+				ProvjeraUvjeta(desniVeciOd0, "Drugi operand lijevog pomaka mora biti veći od 0");
+				ProvjeraUvjeta(desniManjiOd32, "Drugi operand lijevog pomaka mora biti manji od 32");
+				
+				return Builder().CreateShl(lijevo, desno, "lijeviPomak");
 			}
 			case RSHIFTEQ:
 			{
-				int smanjenDesni = llvm::dyn_cast<llvm::ConstantInt>(desno)->getValue().getSExtValue() % 32;
-				novoLijevo = Builder().CreateAShr(lijevo, smanjenDesni);
-				break;
+				// vidi gore
+				llvm::Value* nula = llvm::ConstantInt::get(*Context().LLVMContext(), llvm::APInt(32, 0, true));
+				llvm::Value* tridesetDva = llvm::ConstantInt::get(*Context().LLVMContext(), llvm::APInt(32, 32, true));
+				llvm::Value* desniVeciOd0 = Builder().CreateICmpSGT(desno, nula);
+				llvm::Value* desniManjiOd32 = Builder().CreateICmpSLT(desno, tridesetDva);
+				ProvjeraUvjeta(desniVeciOd0, "Drugi operand desnog pomaka mora biti veći od 0");
+				ProvjeraUvjeta(desniManjiOd32, "Drugi operand desnog pomaka mora biti manji od 32");
+
+				return Builder().CreateAShr(lijevo, desno, "desniPomak");
 			}
 			case BANDEQ:
 				novoLijevo = Builder().CreateAnd(lijevo, desno);
@@ -1473,13 +1832,13 @@ namespace C0Compiler
 				break;
 		}
 
-		Builder().CreateStore(novoLijevo, lijevo);
+		Builder().CreateStore(novoLijevo, adresaLijevog);
 		return novoLijevo;
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// Alokacija
-
+	// DONE
 	Alokacija::Alokacija(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) : 
 		IzrazAST(redak, stupac, std::move(djeca)) 
 	{}
@@ -1488,19 +1847,25 @@ namespace C0Compiler
 		IzrazAST(drugi) 
 	{}
 
+	void Alokacija::Ispisi(std::ostream& out) const
+	{
+		out << "Alokacija" << std::endl;
+		IspisiDjecu(out);
+	}
+
 	llvm::Value* Alokacija::GenerirajKodIzraz()
 	{
 		// dohvati tip
 		llvm::Type* tip = m_djeca.front()->GenerirajKodTip();
-		llvm::Type* intTip = Context().PrevediTip("int");
+		llvm::Type* tipInt = Context().PrevediTip("int");
 		std::string tipString = Context().PrevediTip(tip);
 		m_djeca.pop_front();
 
 		// dohvati sizeof(tip)
-		llvm::Constant* velicinaObjekta = llvm::ConstantInt::get(intTip, Module()->getDataLayout().getTypeAllocSize(tip));
+		llvm::Constant* velicinaObjekta = llvm::ConstantInt::get(tipInt, Module()->getDataLayout().getTypeAllocSize(tip));
 		
 		// i kreiraj poziv malloc(tip*, sizeof(tip))
-		llvm::Instruction* pozivMalloc = llvm::CallInst::CreateMalloc(Builder().GetInsertBlock(), tip->getPointerTo(), tip, velicinaObjekta, nullptr, nullptr, "");
+		llvm::Instruction* pozivMalloc = llvm::CallInst::CreateMalloc(Builder().GetInsertBlock(), tipInt, tip, velicinaObjekta, nullptr, nullptr, "alokacija");
 		Builder().Insert(pozivMalloc);
 		//(*Context().TipoviPointera())[pozivMalloc] = tipString;
 
@@ -1509,7 +1874,7 @@ namespace C0Compiler
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// AlokacijaArray
-
+	// DONE
 	AlokacijaArray::AlokacijaArray(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) 
 		: IzrazAST(redak, stupac, std::move(djeca)) 
 	{}
@@ -1518,31 +1883,69 @@ namespace C0Compiler
 		IzrazAST(drugi) 
 	{}
 
+	void AlokacijaArray::Ispisi(std::ostream& out) const
+	{
+		out << "AlokacijaArray" << std::endl;
+		IspisiDjecu(out);
+	}
+
 	llvm::Value* AlokacijaArray::GenerirajKodIzraz()
 	{
+		llvm::Value* ret;
+		llvm::Value* dereferenciraniRet;
+
 		// dohvati tip arraya i zapamti Tip* za int
 		llvm::Type* tip = m_djeca.front()->GenerirajKodTip();
-		llvm::Type* intTip = Context().PrevediTip("int");
-		std::string tipString = std::dynamic_pointer_cast<Leaf>(m_djeca.front())->Sadrzaj();
+		llvm::Type* tipInt = Context().PrevediTip("int");
+		std::string tipSlovima = *std::dynamic_pointer_cast<Tip>(m_djeca.front());
 		m_djeca.pop_front();
-		
-		llvm::Constant* kolicina = static_cast<llvm::Constant*>(m_djeca.front()->GenerirajKodIzraz());
 
-		// dohvati sizeof(tip)
-		llvm::Constant* velicinaObjekta = llvm::ConstantInt::get(intTip, Module()->getDataLayout().getTypeAllocSize(tip));
-		llvm::Constant* velicinaPolja = llvm::ConstantExpr::getMul(velicinaObjekta, kolicina);
+		// alociramo memoriju za struct{int, <tip>}*. zapravo pripremimo podatke za Alokaciju
+		std::shared_ptr<Leaf> alokacijaTipSlovima = std::make_shared<Leaf>(Token(PRAZNO, tipSlovima + "[]", Redak(), Stupac()));
+		std::list<std::shared_ptr<AST>> alokacijaTipDjeca;
+		alokacijaTipDjeca.push_back(std::move(alokacijaTipSlovima));
+		std::shared_ptr<Tip> alokacijaTip = std::make_shared<Tip>(Redak(), Stupac(), std::move(alokacijaTipDjeca));
+
+		std::list<std::shared_ptr<AST>> alokacijaDjeca;
+		alokacijaDjeca.push_back(std::move(alokacijaTip));
+		Alokacija alokacija(Redak(), Stupac(), std::move(alokacijaDjeca));
+
+		// i pustimo je da alocira memoriju za nas! 
+		ret = alokacija.GenerirajKodIzraz();
+		dereferenciraniRet = Builder().CreateLoad(ret, "dereferencirajStrukturu");
+
+		// dohvatimo nulti element strukture polja - int koji će sadržavati njegovu duljinu i pridružimo mu odgovarajuću vrijednost
+		llvm::Value* size = Context().DohvatiClanStrukture(ret, 0);
+		if (size == nullptr)
+			throw SemantickaGreska(Redak(), Stupac(), "Greška pri spremanju duljine novog polja");
+
+		llvm::Constant* kolicinaObjekata = static_cast<llvm::Constant*>(m_djeca.front()->GenerirajKodIzraz());
+		Builder().CreateStore(kolicinaObjekata, size);
+
+		// dohvatimo praznu memoriju za elemente polja
+		llvm::Value* elements = Context().DohvatiClanStrukture(ret, 1);
+		if (elements == nullptr)
+			throw SemantickaGreska(Redak(), Stupac(), "Greška pri spremanju sadržaja novog polja");
+
+		// dohvatimo sizeof(tip)
+		llvm::Constant* velicinaObjekta = llvm::ConstantInt::get(tipInt, Module()->getDataLayout().getTypeAllocSize(tip));
+		llvm::Constant* velicinaPolja = llvm::ConstantExpr::getMul(velicinaObjekta, kolicinaObjekata);
+		velicinaPolja = llvm::ConstantExpr::getTruncOrBitCast(velicinaPolja, tipInt);
 
 		// kreiraj poziv malloc(tip*, sizeof(tip))
-		llvm::Instruction* pozivMalloc = llvm::CallInst::CreateMalloc(Builder().GetInsertBlock(), tip->getPointerTo(), tip, velicinaObjekta, nullptr, nullptr, "");
+		llvm::Instruction* pozivMalloc = llvm::CallInst::CreateMalloc(Builder().GetInsertBlock(), tipInt, tip, velicinaPolja, nullptr, nullptr, "");
 		Builder().Insert(pozivMalloc);
-		//(*Context().TipoviPointera())[pozivMalloc] = tipString;
 
-		return pozivMalloc;
+		// namjestimo da pokazivač u strukturi pokazuje na alociranu memoriju
+		Builder().CreateStore(pozivMalloc, elements);
+
+		// i vratimo pointer na strukturu
+		return ret;
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// Negacija
-
+	// DONE
 	Negacija::Negacija(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) : 
 		IzrazAST(redak, stupac, std::move(djeca)) 
 	{}
@@ -1551,23 +1954,29 @@ namespace C0Compiler
 		IzrazAST(drugi) 
 	{}
 
+	void Negacija::Ispisi(std::ostream& out) const
+	{
+		out << "Negacija" << std::endl;
+		IspisiDjecu(out);
+	}
+
 	llvm::Value* Negacija::GenerirajKodIzraz()
 	{
 		llvm::Value* operand = m_djeca.front()->GenerirajKodIzraz();
 
 		if (operand->getType() != Context().PrevediTip("bool"))
-			throw SemantickaGreska(m_djeca.front()->Redak(), m_djeca.front()->Stupac(), "Operand operatora negacije mora biti tipa bool.");
+			throw SemantickaGreska(m_djeca.front()->Redak(), m_djeca.front()->Stupac(), "Operand operatora negacije mora biti tipa bool");
 
 		m_djeca.pop_front();
 		operand = Builder().CreateNot(operand, "logickaNegacija");
 
 		// pretvorimo bool u broj 0.0 ili 1.0 (jer LLVM tako kaže)
-		return Builder().CreateUIToFP(operand, llvm::Type::getDoubleTy(*Context().LLVMContext().get()), "rezultatLogickaNegacija");
+		return Builder().CreateUIToFP(operand, llvm::Type::getInt1Ty(*Context().LLVMContext().get()), "rezultatLogickaNegacija");
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// Tilda
-
+	// DONE
 	Tilda::Tilda(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) : 
 		IzrazAST(redak, stupac, std::move(djeca)) 
 	{}
@@ -1576,23 +1985,29 @@ namespace C0Compiler
 		IzrazAST(drugi) 
 	{}
 
+	void Tilda::Ispisi(std::ostream& out) const
+	{
+		out << "Tilda" << std::endl;
+		IspisiDjecu(out);
+	}
+
 	llvm::Value* Tilda::GenerirajKodIzraz()
 	{
 		llvm::Value* operand = m_djeca.front()->GenerirajKodIzraz();
 		
 		if (operand->getType() != Context().PrevediTip("int"))
-			throw SemantickaGreska(m_djeca.front()->Redak(), m_djeca.front()->Stupac(), "Operand bitovne negacije mora biti tipa int.");
+			throw SemantickaGreska(m_djeca.front()->Redak(), m_djeca.front()->Stupac(), "Operand bitovne negacije mora biti tipa int");
 
 		m_djeca.pop_front();
 		operand = Builder().CreateNot(operand, "bitovnaNegacija");
 
 		// pretvorimo bool u broj 0.0 ili 1.0 (jer LLVM tako kaže)
-		return Builder().CreateUIToFP(operand, llvm::Type::getDoubleTy(*Context().LLVMContext().get()), "rezultatBitovnaNegacija");
+		return Builder().CreateUIToFP(operand, llvm::Type::getInt1Ty(*Context().LLVMContext().get()), "rezultatBitovnaNegacija");
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// Minus
-
+	// DONE
 	Minus::Minus(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) : 
 		IzrazAST(redak, stupac, std::move(djeca)) 
 	{}
@@ -1601,23 +2016,29 @@ namespace C0Compiler
 		IzrazAST(drugi) 
 	{}
 
+	void Minus::Ispisi(std::ostream& out) const
+	{
+		out << "Minus" << std::endl;
+		IspisiDjecu(out);
+	}
+
 	llvm::Value* Minus::GenerirajKodIzraz()
 	{
 		llvm::Value* operand = m_djeca.front()->GenerirajKodIzraz();
 
+		if(operand == nullptr)
+			throw SemantickaGreska(Redak(), Stupac(), "Operand aritmetičke negacije je neispravna vrijednost");
+
 		if (operand->getType() != Context().PrevediTip("int"))
-			throw SemantickaGreska(m_djeca.front()->Redak(), m_djeca.front()->Stupac(), "Operand aritmetičke negacije mora biti tipa int.");
+			throw SemantickaGreska(m_djeca.front()->Redak(), m_djeca.front()->Stupac(), "Operand aritmetičke negacije mora biti tipa int");
 
 		m_djeca.pop_front();
-		operand = Builder().CreateNot(operand, "aritmetickaNegacija");
-
-		// pretvorimo bool u broj 0.0 ili 1.0 (jer LLVM tako kaže)
-		return Builder().CreateUIToFP(operand, llvm::Type::getDoubleTy(*Context().LLVMContext().get()), "rezultatAritmetickaNegacija");
+		return Builder().CreateNeg(operand, "aritmetickaNegacija");
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// Dereferenciranje
-	
+	// DONE
 	Dereferenciranje::Dereferenciranje(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) : 
 		IzrazAST(redak, stupac, std::move(djeca)) 
 	{}
@@ -1625,6 +2046,12 @@ namespace C0Compiler
 	Dereferenciranje::Dereferenciranje(Dereferenciranje const& drugi) : 
 		IzrazAST(drugi) 
 	{}
+
+	void Dereferenciranje::Ispisi(std::ostream& out) const
+	{
+		out << "Dereferenciranje" << std::endl;
+		IspisiDjecu(out);
+	}
 
 	llvm::Value* Dereferenciranje::GenerirajKodIzraz()
 	{
@@ -1645,6 +2072,12 @@ namespace C0Compiler
 		IzrazAST(drugi)
 	{}
 
+	void PozivFunkcije::Ispisi(std::ostream& out) const
+	{
+		out << "PozivFunkcije" << std::endl;
+		IspisiDjecu(out);
+	}
+
 	llvm::Value* PozivFunkcije::GenerirajKodIzraz()
 	{
 		std::string ime = std::dynamic_pointer_cast<Leaf>(m_djeca.front())->Sadrzaj();
@@ -1652,7 +2085,7 @@ namespace C0Compiler
 
 		llvm::Function* funkcija = Context().Module()->getFunction(ime);
 		if (funkcija == nullptr) 
-			throw SemantickaGreska(Redak(), Stupac(), "Ne postoji funkcija s imenom " + ime + ".");
+			throw SemantickaGreska(Redak(), Stupac(), "Ne postoji funkcija s imenom " + ime + "");
 
 		ASTList& dobiveniArgumenti = *std::dynamic_pointer_cast<ASTList>(m_djeca.front());
 		
@@ -1660,7 +2093,7 @@ namespace C0Compiler
 		{
 			std::stringstream poruka;
 			poruka << "Funkcija " << ime << " prima " << funkcija->arg_size()
-				<< " argumenata (poslano " << dobiveniArgumenti.size() << ").";
+				<< " argumenata (poslano " << dobiveniArgumenti.size() << ")";
 			throw SemantickaGreska(Redak(), Stupac(), poruka.str());
 		}
 
@@ -1676,7 +2109,7 @@ namespace C0Compiler
 				std::stringstream poruka;
 				poruka << i << ". argument u pozivu funkcije " << ime << " ne odgovara definiciji. "
 					<< "Očekujem '" << Context().PrevediTip(it->getType()) << "', dobio ' "
-					<< Context().PrevediTip(argumenti[--i]->getType()) << "'.";
+					<< Context().PrevediTip(argumenti[--i]->getType()) << "'";
 				throw new SemantickaGreska(Redak(), Stupac(), poruka.str());
 			}
 		}
@@ -1687,7 +2120,7 @@ namespace C0Compiler
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// Inkrement
-
+	// DONE
 	Inkrement::Inkrement(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) : 
 		IzrazAST(redak, stupac, std::move(djeca)) 
 	{}
@@ -1696,6 +2129,12 @@ namespace C0Compiler
 		IzrazAST(drugi) 
 	{}
 
+	void Inkrement::Ispisi(std::ostream& out) const
+	{
+		out << "Inkrement" << std::endl;
+		IspisiDjecu(out);
+	}
+
 	llvm::Value* Inkrement::GenerirajKodIzraz()
 	{
 		llvm::Value* operand = m_djeca.front()->GenerirajKodIzraz();
@@ -1703,20 +2142,16 @@ namespace C0Compiler
 
 		m_djeca.pop_front();
 
-		//// dohvati poznatu vrijednost operanda
-		//Builder().CreateLoad(operand, operand->getName());
-		//if (operand == nullptr)
-		//	throw SemantickaGreska(Redak(), Stupac(), "Varijabla " + std::string(operand->getName()) + " nije deklarirana.");
-
 		llvm::Value* novaVrijednost = Builder().CreateAdd(operand, jedan);
-		Builder().CreateStore(novaVrijednost, operand);
+		Builder().CreateStore(novaVrijednost, Context().TrenutniBlok()->Trazi(Context().TrenutniBlok()->Trazi(operand)));
+		//Builder().CreateStore(novaVrijednost, operand);
 
 		return novaVrijednost;
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// Dekrement
-
+	// DONE
 	Dekrement::Dekrement(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) :
 		IzrazAST(redak, stupac, std::move(djeca)) 
 	{}
@@ -1725,17 +2160,18 @@ namespace C0Compiler
 		IzrazAST(drugi) 
 	{}
 
+	void Dekrement::Ispisi(std::ostream& out) const
+	{
+		out << "Dekrement" << std::endl;
+		IspisiDjecu(out);
+	}
+
 	llvm::Value* Dekrement::GenerirajKodIzraz()
 	{
 		llvm::Value* operand = m_djeca.front()->GenerirajKodIzraz();
 		llvm::Constant* jedan = llvm::ConstantInt::get(Context().PrevediTip("int"), 1);
 
 		m_djeca.pop_front();
-
-		//// dohvati poznatu vrijednost operanda
-		//Builder().CreateLoad(operand, operand->getName());
-		//if (operand == nullptr)
-		//	throw SemantickaGreska(Redak(), Stupac(), "Varijabla " + std::string(operand->getName()) + " nije deklarirana.");
 
 		llvm::Value* novaVrijednost = Builder().CreateSub(operand, jedan);
 		Builder().CreateStore(novaVrijednost, operand);
@@ -1745,7 +2181,7 @@ namespace C0Compiler
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// UglateZagrade
-
+	// DONE
 	UglateZagrade::UglateZagrade(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) : 
 		IzrazAST(redak, stupac, std::move(djeca)) 
 	{}
@@ -1754,24 +2190,54 @@ namespace C0Compiler
 		IzrazAST(drugi) 
 	{}
 
+	void UglateZagrade::Ispisi(std::ostream& out) const
+	{
+		out << "UglateZagrade" << std::endl;
+		IspisiDjecu(out);
+	}
+
 	llvm::Value* UglateZagrade::GenerirajKodIzraz()
 	{
 		llvm::Value* polje = m_djeca.front()->GenerirajKodIzraz();
-		m_djeca.pop_front();
 
-		llvm::Value* indeks = m_djeca.front()->GenerirajKodIzraz();
-		if (Context().PrevediTip(indeks->getType()) != "int")
-			throw SemantickaGreska(Redak(), Stupac(), "Indeks mora biti tipa 'int'!");
-
+		ProvjeraVrijednosti(polje);
+		ProvjeraPolja(polje);
 		m_djeca.pop_front();
 		
-		llvm::Value* dohvaceniElement = Builder().CreateInBoundsGEP(polje, indeks);
+		llvm::Value* indeksPolja = m_djeca.front()->GenerirajKodIzraz();
+		m_djeca.pop_front();
+		ProvjeraTipa(indeksPolja, Context().PrevediTip("int"));
 
+		// ako indeks nije između 0 i duljine polja, bacamo iznimku
+		llvm::Value* nula = llvm::ConstantInt::get(*Context().LLVMContext().get(), llvm::APInt(32, 0, true));
+		llvm::Value* veceOdNule = Builder().CreateICmpSLT(nula, indeksPolja, "usporedbaManje");
+		ProvjeraUvjeta(veceOdNule, "Indeks polja mora biti veći od 0!");
+
+		// sad dohvatimo duljinu polja
+		llvm::Value* dohvacenaDuljina = Context().DohvatiClanStrukture(polje, 0);
+		ProvjeraVrijednosti(dohvacenaDuljina);
+
+		// i provjerimo je li indeks manji od duljine
+		llvm::Value* manjeOdDuljine = Builder().CreateICmpSLT(indeksPolja, dohvacenaDuljina);
+		ProvjeraUvjeta(manjeOdDuljine, "Indeks polja mora biti manji od maksimalne duljine polja!");
+		
+		// ako je sve u redu s duljinom, dohvatimo pointer na polje i dereferenciramo ga
+		llvm::Value* dohvacenoPolje = Context().DohvatiClanStrukture(polje, 1);
+		ProvjeraVrijednosti(dohvacenoPolje);
+
+		// zatim konstruiramo indeks elementa
+		std::vector<llvm::Value*> indeksElementa;
+		indeksElementa.push_back(indeksPolja);
+
+		// i dohvatimo element polja koji je na tom indeksu
+		llvm::Value* dohvaceniElement = Builder().CreateGEP(dohvacenoPolje, indeksElementa, "pointerNaElement");
+		dohvaceniElement = Builder().CreateLoad(dohvaceniElement, "elementPolja");
 		return dohvaceniElement;
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// Tip
+	// DONE
 
 	Tip::Tip(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) : 
 		TipAST(redak, stupac, std::move(djeca)),
@@ -1793,18 +2259,25 @@ namespace C0Compiler
 	Tip::Tip(Tip const& drugi) : 
 		TipAST(drugi) 
 	{}
+	
+	void Tip::Ispisi(std::ostream& out) const
+	{
+		out << "Tip (" << m_ime << ")" << std::endl;
+		IspisiDjecu(out);
+	}
 
 	llvm::Type* Tip::GenerirajKodTip()
 	{
 		llvm::Type* ret = Context().PrevediTip(m_ime);
 		if (ret == nullptr)
-			throw new SemantickaGreska(Redak(), Stupac(), "Nepoznat tip '" + m_ime + "'!");
+			throw new SemantickaGreska(Redak(), Stupac(), "Nepoznat tip '" + m_ime + "'");
 
 		return ret;
 	}
 	
 	////////////////////////////////////////////////////////////////////////////////////
 	// Tocka
+	// DONE
 
 	Tocka::Tocka(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) : 
 		IzrazAST(redak, stupac, std::move(djeca)) 
@@ -1813,6 +2286,12 @@ namespace C0Compiler
 	Tocka::Tocka(Tocka const& drugi) : 
 		IzrazAST(drugi) 
 	{}
+
+	void Tocka::Ispisi(std::ostream& out) const
+	{
+		out << "Tocka" << std::endl;
+		IspisiDjecu(out);
+	}
 
 	llvm::Value* Tocka::GenerirajKodIzraz()
 	{
@@ -1825,36 +2304,22 @@ namespace C0Compiler
 		std::string imeStrukture = Context().PrevediTip(Context().LokalneVarijable()[imeVarijable]->getType());
 
 		// dohvatimo ime elementa koji nas zanima
-		llvm::Value* element = m_djeca.front()->GenerirajKodIzraz();
+		std::string imeClana = (std::dynamic_pointer_cast<Leaf>(m_djeca.front()))->Sadrzaj();
 		m_djeca.pop_front();
 
 		// pročitamo indeks tog elementa u strukturi
-		int indeksElementa = Context().DohvatiIndeksElementaStrukture(imeStrukture, element->getName());
-		
-		// prevedemo taj indeks u LLVM jezik
-		llvm::Value* indeks = llvm::ConstantInt::get(*Context().LLVMContext(), llvm::APInt(32, indeksElementa, true));
+		int indeksClana = Context().DohvatiIndeksClanaStrukture(imeStrukture, imeClana);
+		llvm::Value* dohvaceniClan = Context().DohvatiClanStrukture(Context().TrenutniBlok()->Trazi(imeStrukture), indeksClana);
 
-		llvm::AllocaInst* alokacija = Builder().CreateAlloca(Context().PrevediTip(imeStrukture), 0, "");
-		Builder().CreateStore(varijabla, alokacija);
+		if (dohvaceniClan == nullptr)
+			throw SemantickaGreska(Redak(), Stupac(), "Greška pri dohvaćanju člana " + imeClana + " strukture " + imeStrukture);
 
-		std::vector<llvm::Value*> indeksi(2);
-		// prvi indeks uvijek mora biti 0 jer LLVM tako kaže
-		indeksi[0] = llvm::ConstantInt::get(*Context().LLVMContext().get(), llvm::APInt(32, 0, true));
-		
-		// a drugi je zapravo indeks elementa kojeg dohvaćamo
-		indeksi[1] = indeks;
-
-		// dohvatimo pointer na element
-		llvm::Value* elementStrukture = Builder().CreateGEP(Context().PrevediTip(imeStrukture), alokacija, indeksi, "");
-
-		// i onda dohvatimo element
-		llvm::Value* ucitanElement = Builder().CreateLoad(elementStrukture, "");
-
-		return ucitanElement;
+		return dohvaceniClan;
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// Strelica
+	// DONE
 
 	Strelica::Strelica(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) :
 		IzrazAST(redak, stupac, std::move(djeca)) 
@@ -1864,6 +2329,12 @@ namespace C0Compiler
 		IzrazAST(drugi) 
 	{}
 	
+	void Strelica::Ispisi(std::ostream& out) const
+	{
+		out << "Strelica" << std::endl;
+		IspisiDjecu(out);
+	}
+
 	llvm::Value* Strelica::GenerirajKodIzraz()
 	{
 		// dereferenciraj lijevu stranu
@@ -1872,48 +2343,74 @@ namespace C0Compiler
 		llvm::Value* pointer = Builder().CreateIntToPtr(pointerKaoBroj, tipPointera);
 		llvm::Value* lijevo = Builder().CreateLoad(pointer, tipPointera);
 
-		// i vrati odgovarajući element strukture
-		std::string imeVarijable = lijevo->getName();
+		// i vrati odgovarajući član strukture
+		std::string imeStrukture = lijevo->getName();
 		m_djeca.pop_front();
 
-		std::string imeStrukture = Context().PrevediTip(Context().LokalneVarijable()[imeVarijable]->getType());
-		llvm::Value* element = m_djeca.front()->GenerirajKodIzraz();
+		std::string tipStrukture = Context().PrevediTip(Context().LokalneVarijable()[imeStrukture]->getType());
+		llvm::Value* clan = m_djeca.front()->GenerirajKodIzraz();
 		m_djeca.pop_front();
 		
-		int indeksElementa = Context().DohvatiIndeksElementaStrukture(imeStrukture, element->getName());
-		llvm::Value* indeks = llvm::ConstantInt::get(*Context().LLVMContext(), llvm::APInt(32, indeksElementa, true));
+		// pročitamo indeks tog elementa u strukturi
+		int indeksClana = Context().DohvatiIndeksClanaStrukture(imeStrukture, clan->getName());
+		llvm::Value* dohvaceniClan = Context().DohvatiClanStrukture(Context().TrenutniBlok()->Trazi(imeStrukture), indeksClana);
 
-		llvm::AllocaInst* alokacija = Builder().CreateAlloca(Context().PrevediTip(imeStrukture), 0, "");
-		Builder().CreateStore(lijevo, alokacija);
+		if (dohvaceniClan == nullptr)
+			throw SemantickaGreska(Redak(), Stupac(), "Greška pri dohvaćanju člana " + clan->getName().str() + " strukture " + imeStrukture);
 
-		std::vector<llvm::Value*> indeksi(2);
-		indeksi[0] = llvm::ConstantInt::get(*Context().LLVMContext().get(), llvm::APInt(32, 0, true));
-		indeksi[1] = indeks;
-
-		llvm::Value* elementStrukture = Builder().CreateGEP(Context().PrevediTip(imeStrukture), alokacija, indeksi, "");
-		llvm::Value* ucitanElement = Builder().CreateLoad(elementStrukture, "");
-
-		return ucitanElement;
+		return dohvaceniClan;
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////
-	// BrojLiteral
+	// Leaf
+	// DONE
 
-	BrojLiteral::BrojLiteral(Token const& sadrzaj) :
+	Leaf::Leaf(Token const& sadrzaj) : 
+		IzrazAST(sadrzaj.Redak(), sadrzaj.Stupac()), 
+		m_sadrzaj(sadrzaj) 
+	{}
+
+	Leaf::Leaf(Leaf const& drugi) : 
+		IzrazAST(drugi) 
+	{ 
+		m_sadrzaj = drugi.m_sadrzaj; 
+	}
+
+	void Leaf::Ispisi(std::ostream& out) const
+	{
+		out << "Leaf (" << m_sadrzaj << ")" << std::endl;
+	}
+
+	////////////////////////////////////////////////////////////////////////////////////
+	// IntLiteral
+	// DONE
+
+	IntLiteral::IntLiteral(Token const& sadrzaj) :
 		Leaf(sadrzaj)
 	{}
 
-	llvm::Value* BrojLiteral::GenerirajKodIzraz()
+	void IntLiteral::Ispisi(std::ostream& out) const
+	{
+		out << "IntLiteral (" << Sadrzaj() << ")" << std::endl;
+	}
+
+	llvm::Value* IntLiteral::GenerirajKodIzraz()
 	{
 		return llvm::ConstantInt::get(Context().PrevediTip("int"), (int)*this, true);
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// CharLiteral
+	// DONE
 
 	CharLiteral::CharLiteral(Token const& sadrzaj) :
 		Leaf(sadrzaj)
 	{}
+
+	void CharLiteral::Ispisi(std::ostream& out) const
+	{
+		out << "CharLiteral (" << Sadrzaj() << ")" << std::endl;
+	}
 
 	llvm::Value* CharLiteral::GenerirajKodIzraz()
 	{
@@ -1922,6 +2419,7 @@ namespace C0Compiler
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// BoolLiteral
+	// DONE
 
 	BoolLiteral::BoolLiteral(Token const& sadrzaj) :
 		Leaf(sadrzaj)
@@ -1929,11 +2427,16 @@ namespace C0Compiler
 
 	BoolLiteral::operator bool() const
 	{
-		if (m_sadrzaj.Sadrzaj() == "true")
+		if (Sadrzaj() == "true")
 			return true;
 
-		if (m_sadrzaj.Sadrzaj() == "false")
+		if (Sadrzaj() == "false")
 			return false;
+	}
+
+	void BoolLiteral::Ispisi(std::ostream& out) const
+	{
+		out << "BoolLiteral (" << Sadrzaj() << ")" << std::endl;
 	}
 
 	llvm::Value* BoolLiteral::GenerirajKodIzraz()
@@ -1943,14 +2446,93 @@ namespace C0Compiler
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// StringLiteral
+	// DONE
 
 	StringLiteral::StringLiteral(Token const& sadrzaj) :
 		Leaf(sadrzaj)
-	{}
+	{
+		// sadržaj sadrži znakove "", što ne želimo pa ćemo ih maknuti
+		int size = Sadrzaj().size();
+		std::string noviSadrzaj = Sadrzaj().substr(1, size - 2);
+		m_sadrzaj = Token(sadrzaj.Tip(), noviSadrzaj, sadrzaj.Redak(), sadrzaj.Stupac());
+	}
+
+	void StringLiteral::Ispisi(std::ostream& out) const
+	{
+		out << "StringLiteral (\"" << Sadrzaj() << "\")" << std::endl;
+	}
 
 	llvm::Value* StringLiteral::GenerirajKodIzraz()
 	{
-		return llvm::ConstantDataArray::getString(*Context().LLVMContext(), (const char*)(*this));
+		// dohvatimo funkciju u kojoj se nalazimo
+		llvm::Function* funkcija = Builder().GetInsertBlock()->getParent();
+
+		// alociramo memoriju za string
+		llvm::Value* ret = Context().StackAlokacija(funkcija, Context().PrevediTip("string"), "");
+
+		// dohvatimo nulti element strukture string te spremimo duljinu stringa u njega
+		llvm::Value* size = Context().DohvatiClanStrukture(ret, 0);
+		if (size == nullptr)
+			throw SemantickaGreska(Redak(), Stupac(), "Greška pri spremanju duljine literala tipa string");
+
+		Builder().CreateStore(llvm::ConstantInt::get(*Context().LLVMContext(), llvm::APInt(32, Sadrzaj().size(), true)), size);
+
+		// dohvatimo prvi element strukture
+		llvm::Value* data = Context().DohvatiClanStrukture(ret, 1);
+		if (data == nullptr)
+			throw SemantickaGreska(Redak(), Stupac(), "Greška pri dohvaćanju sadržaja literala tipa string");
+
+		// prevedemo novu vrijednost elemenata strukture string u LLVM
+		llvm::Constant* _data = Builder().CreateGlobalString((const char*)(*this), "noviString(" + Sadrzaj() + ")");
+		// i castamo to u char*
+		_data = llvm::ConstantExpr::getBitCast(_data, Context().PrevediTip("char*"));
+
+		// spremimo nove vrijednosti elemenata u strukturu
+		Builder().CreateStore(_data, data);
+
+		// dereferenciramo pointer na memoriju gdje se nalazi string literral
+		ret = Builder().CreateLoad(ret, "popunjenStringLiteral");
+
+		// i vratimo ga
+		return ret;
 	}
 
+	////////////////////////////////////////////////////////////////////////////////////
+	// ASTList
+	// DONE
+
+	ASTList::ASTList(int redak, int stupac) : 
+		IzrazAST(redak, stupac) 
+	{}
+
+	ASTList::ASTList(int redak, int stupac, std::list<std::shared_ptr<AST>>&& djeca) :
+		IzrazAST(redak, stupac, std::move(djeca))
+	{}
+
+	ASTList::ASTList(ASTList const& drugi) : 
+		IzrazAST(drugi) 
+	{}
+
+	void ASTList::Ispisi(std::ostream& out) const
+	{
+		out << "ASTList" << std::endl;
+		IspisiDjecu(out);
+	}
+
+	llvm::Value* ASTList::GenerirajKodIzraz()
+	{
+		for (iterator it = begin(); it != end(); ++it)
+		{
+			// uvijek je točno jedan od sljedeća 3 poziva netrivijalan i
+			// to nikad nije GenerirajKodFunkcija; taj je tu da bude očito
+			// da negdje nešto ne štima ako taj ispadne netrivijalan
+			(*it)->GenerirajKodIzraz();
+			(*it)->GenerirajKodTip();
+			//(*it)->GenerirajKodFunkcija();
+		}
+
+		// vraćam nulu jer ionako nikad ne gledam što ova funkcija vraća.
+		// ne vraćam nullptr jer tako LLVM označava greške pri generiranju koda
+		return llvm::Constant::getNullValue(llvm::Type::getInt32Ty(*Context().LLVMContext()));
+	}
 }

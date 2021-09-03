@@ -8,6 +8,12 @@ namespace C0Compiler
 
 	std::ostream& operator<<(std::ostream& out, Token const& t)
 	{
-		return out << tokenString[t.m_tip] << "(" << t.m_sadrzaj << ')';
+		out << tokenString[t.m_tip];
+		if(t.m_tip != POCETAK &&
+			t.m_tip != KRAJ &&
+			t.m_tip != PRAZNO)
+			out << "('" << t.m_sadrzaj << "')";
+
+		return out;
 	}
 }

@@ -16,7 +16,7 @@ namespace C0Compiler
 	class Lekser
 	{
 		public:
-			Lekser(std::shared_ptr<std::ifstream> const& code);		// uzmi kod napisan u C0 i napravi tokene iz njega
+			Lekser(std::shared_ptr<std::ifstream> code);		// uzmi kod napisan u C0 i napravi tokene iz njega
 			std::deque<std::shared_ptr<Token>> leksiraj();			// konstruiraj tokene od source-a
 
 		private:
@@ -37,7 +37,7 @@ namespace C0Compiler
 			char citaj();												// čitaj sljedeći znak iz input datoteke
 			char procitaj(char znak);									// čitaj sljedeći znak iz input datoteke ako je jednak 'znak'-u, inače vrati grešku
 			bool probajProcitati(char znak);							// čitaj sljedeći znak iz input datoteke ako je jednak 'znak'-u i vrati true, inače vrati false
-			int	 kleeneZvijezda(std::function<bool(char)> && uvjet);	// čitaj 0 ili više znakova koji zadovoljavaju uvjet, vrati broj pročitanih
+			int	 KleeneZvijezda(std::function<bool(char)> && uvjet);	// čitaj 0 ili više znakova koji zadovoljavaju uvjet, vrati broj pročitanih
 			void vrati();												// vrati glavu za čitanje jedno mjesto nazad
 			void tokeniziraj(TokenTip tip);								// spremi token sadržaja sadrzaj i tipa tip
 	};

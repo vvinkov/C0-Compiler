@@ -19,6 +19,9 @@ namespace C0Compiler
 		public:
 			Greska(std::string const& vrsta, int redak, int stupac);
 			Greska(std::string const& vrsta, int redak, int stupac, std::string const& opis);
+			Greska(Greska const& druga);
+			Greska(Greska&& druga);
+
 			virtual const char* what() const override { return poruka.str().c_str(); };
 
 			virtual ~Greska() {}
@@ -30,6 +33,8 @@ namespace C0Compiler
 			LeksickaGreska(int redak, int stupac, char dobio, char ocekujem);
 			LeksickaGreska(int redak, int stupac, std::string const& opis) : Greska("Leksička greška", redak, stupac, opis) {}
 			LeksickaGreska(int redak, int stupac, char znak);
+			LeksickaGreska(LeksickaGreska const& druga) : Greska(druga) {};
+			LeksickaGreska(LeksickaGreska&& druga) : Greska(druga) {};
 
 			virtual ~LeksickaGreska(){}
 	};
@@ -40,6 +45,8 @@ namespace C0Compiler
 			SintaksnaGreska(int redak, int stupac, std::string const& opis) : Greska("Sintaksna greška", redak, stupac, opis) {}
 			SintaksnaGreska(int redak, int stupac, Token const& dobio, enum TokenTip ocekujem);
 			SintaksnaGreska(int redak, int stupac, Token const& dobio, std::list<TokenTip>&& ocekujem);
+			SintaksnaGreska(SintaksnaGreska const& druga) : Greska(druga) {};
+			SintaksnaGreska(SintaksnaGreska&& druga) : Greska(druga) {};
 
 			virtual ~SintaksnaGreska(){}
 	};
@@ -47,7 +54,22 @@ namespace C0Compiler
 	class SemantickaGreska : public Greska
 	{
 		public:
-			SemantickaGreska(int redak, int stupac, std::string const& opis) : Greska("Greška!", redak, stupac, opis) {}
+			SemantickaGreska(int redak, int stupac, std::string const& opis) : Greska("Greška", redak, stupac, opis) {}
+			SemantickaGreska(SemantickaGreska const& druga) : Greska(druga) {};
+			SemantickaGreska(SemantickaGreska&& druga) : Greska(druga) {};
+
+			virtual ~SemantickaGreska(){}
+	};
+
+	class Iznimka : public Greska
+	{
+		public:
+			Iznimka(int redak, int stupac, std::string const& vrsta, std::string const& opis) : Greska(vrsta, redak, stupac, opis){}
+			Iznimka(Iznimka const& druga) : Greska(druga) {};
+			Iznimka(Iznimka&& druga) : Greska(druga) {};
+
+			void Prijavi();
+			virtual ~Iznimka(){}
 	};
 }
 

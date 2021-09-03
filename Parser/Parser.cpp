@@ -3,7 +3,8 @@
 
 namespace C0Compiler
 {
-	Parser::Parser(std::deque<std::shared_ptr<Token>>&& tokeni) : m_tokeni(tokeni) 
+	Parser::Parser(std::deque<std::shared_ptr<Token>>&& tokeni, std::shared_ptr<AST> korijen) :
+		m_tokeni(tokeni), m_korijen(korijen)
 	{
 		m_vracanjeOk = false;
 	}
@@ -24,6 +25,7 @@ namespace C0Compiler
 	Token& Parser::citaj()
 	{
 		//delete zadnji;
+		//m_zadnji.reset();
 		m_zadnji = m_tokeni.front();
 		m_tokeni.pop_front();
 		m_vracanjeOk = true;
@@ -50,7 +52,6 @@ namespace C0Compiler
 		{
 			m_vracanjeOk = false;
 			m_tokeni.push_front(m_zadnji);
-			//m_zadnji = nullptr; ne znam zašto je ovo ovdje bilo, čini se bezveze
 		}
 		else
 		{
@@ -58,11 +59,12 @@ namespace C0Compiler
 		}
 	}
 
-	// BUDUĆI DA JE PROGRAM AST IZBAČEN, DOBRO RAZMISLI ŠTA STIŽE UMJESTO NJEGA!
 	void Parser::parsiraj()
 	{
-		//Program prog;
 		std::deque<std::shared_ptr<Token>> resultTokeni;
+		
+		// preskoči početak
+		procitaj(POCETAK);
 
 		// prvo parsiraj use direktive
 		while (sljedeci(USE))
@@ -72,20 +74,17 @@ namespace C0Compiler
 
 			// i appendaj ih u result deque. želimo da zadrže isti poredak.
 			for (std::deque<std::shared_ptr<Token>>::iterator it = tempTokeni.begin(); it != tempTokeni.end(); ++it)
-			{
 				resultTokeni.push_back(*it);
-			}
 		}
 
 		// nakon svih use direktiva, njihove tokene prependamo u glavni deque obrnutim redom, opet, da zadrže poredak
 		for (std::deque<std::shared_ptr<Token>>::reverse_iterator rit = resultTokeni.rbegin(); rit != resultTokeni.rend(); ++rit)
-		{
 			m_tokeni.push_front(*rit);
-		}
 
-		// nakon toga stižu globalne deklaracije i definicije
-		//while(!citaj().OfType(KRAJ))
-		//	prog.dodajDijete(parseGlobal());	
+		// nakon toga stižu globalne deklaracije i definicije. dodajemo ih
+		// u korijen apstraktnog sintaksnog stabla (one se same granaju dalje)
+		while(!citaj().OfType(KRAJ))
+			m_korijen->dodajDijete(parseGlobal());	
 	}
 
 	std::deque<std::shared_ptr<Token>> Parser::parseUse()
@@ -99,7 +98,8 @@ namespace C0Compiler
 
 	std::shared_ptr<AST> Parser::parseGlobal()
 	{	
-		citaj();
+		// pročitali smo token prije ulaska u funkciju pa imamo
+		// odakle izvući redak i stupac
 		int redak = m_zadnji->Redak();
 		int stupac = m_zadnji->Stupac();
 
@@ -123,7 +123,7 @@ namespace C0Compiler
 					while (!sljedeci(VZATV))
 					{
 						// else zapamti tip i pročitaj ime varijable
-						std::shared_ptr<Tip> tip = std::dynamic_pointer_cast<Tip>(parseTip());
+						std::shared_ptr<Tip> tip = std::dynamic_pointer_cast<Tip>(parseType());
 						std::shared_ptr<Leaf> ime(new Leaf(procitaj(IDENTIFIER)));
 
 						if (!sljedeci(VZATV))
@@ -145,7 +145,7 @@ namespace C0Compiler
 
 			case TYPEDEF:
 			{
-				std::shared_ptr<Tip> tip = std::dynamic_pointer_cast<Tip>(parseTip());
+				std::shared_ptr<Tip> tip = std::dynamic_pointer_cast<Tip>(parseType());
 				std::shared_ptr<Leaf> alias(new Leaf(procitaj(IDENTIFIER)));
 				return std::shared_ptr<AST>(new TypeDef(redak, stupac, { tip, alias }));
 			}
@@ -155,19 +155,21 @@ namespace C0Compiler
 			// dakle, sljedeći token je tip (povratni tip funkcije).
 			default:
 			{
-				vrati(); // ovdje moramo vratiti zato što parseTip čita token; 
-						 // ne želimo preskočiti token koji predstavlja povratni tip funkcije
-
+				// ovdje moramo vratiti zato što parseType čita token; 
+				// ne želimo preskočiti token koji predstavlja povratni tip funkcije
+				vrati(); 
+						 
 				std::shared_ptr<ASTList> argumentiFunkcije(new ASTList(redak, stupac));
-				std::shared_ptr<Tip> povratniTip = std::dynamic_pointer_cast<Tip>(parseTip());
-				std::shared_ptr<Leaf> imeFunkcije(new Leaf(procitaj(IDENTIFIER)));
+				std::shared_ptr<Tip> povratniTip = std::dynamic_pointer_cast<Tip>(parseType());
+				//std::shared_ptr<Leaf> imeFunkcije(new Leaf(procitaj(IDENTIFIER)));
+				std::shared_ptr<Leaf> imeFunkcije = std::make_shared<Leaf>(procitaj(IDENTIFIER));
 
 				// nakon imena funkcije slijede njeni argumenti
 				procitaj(OOTV);
 				while (!sljedeci(OZATV))
 				{
 					// parsiramo tip i ime argumenta
-					std::shared_ptr<Tip> tipArgumenta = std::dynamic_pointer_cast<Tip>(parseTip());
+					std::shared_ptr<Tip> tipArgumenta = std::dynamic_pointer_cast<Tip>(parseType());
 					std::shared_ptr<Leaf> imeArgumenta(new Leaf(procitaj(IDENTIFIER)));
 
 					// ako nije zadnji, sljedeći znak je zarez
@@ -179,6 +181,7 @@ namespace C0Compiler
 					argumentiFunkcije->push_back(tipArgumenta);
 					argumentiFunkcije->push_back(imeArgumenta);
 				}
+				procitaj(OZATV);
 
 				if (sljedeci(TZAREZ))
 				{
@@ -194,12 +197,13 @@ namespace C0Compiler
 				while (!sljedeci(VZATV))
 					tijelo->push_back(parseStatement());
 
+				procitaj(VZATV);
 				return std::shared_ptr<AST>(new DefinicijaFunkcije(redak, stupac, { povratniTip, imeFunkcije, argumentiFunkcije, tijelo }));
 			}
 		}
 	}
 
-	std::shared_ptr<AST> Parser::parseTip()
+	std::shared_ptr<AST> Parser::parseType()
 	{
 		citaj();
 		int redak = m_zadnji->Redak();
@@ -227,7 +231,7 @@ namespace C0Compiler
 			case CHARARRAY:
 			{
 				std::shared_ptr<Leaf> doslovnoTajTip(new Leaf(*m_zadnji));	// jer u tokenu doslovno piše taj tip (int, bool, string...)
-				return std::shared_ptr<AST>(new Tip(redak, stupac, { doslovnoTajTip }));
+				return std::shared_ptr<Tip>(new Tip(redak, stupac, { doslovnoTajTip }));
 			}
 			default:
 				throw SintaksnaGreska(m_zadnji->Redak(), m_zadnji->Stupac(), *m_zadnji, { INT, BOOL, STRING, CHAR, INTPOINT, BOOLPOINT, STRINGPOINT, CHARPOINT, INTARRAY, BOOLARRAY, STRINGARRAY, CHARARRAY, STRUCT });
@@ -255,7 +259,7 @@ namespace C0Compiler
 					return std::shared_ptr<AST>(new IfElse(redak, stupac, { uvjet, tijeloIf, tijeloElse }));
 				}
 				else
-					return std::shared_ptr<AST>(new IfElse(redak, stupac, { uvjet, tijeloIf, std::shared_ptr<AST>(nullptr) }));
+					return std::shared_ptr<AST>(new IfElse(redak, stupac, { uvjet, tijeloIf, nullptr }));
 			}
 
 			case WHILE:
@@ -331,6 +335,7 @@ namespace C0Compiler
 			}
 
 			default:
+				vrati();
 				std::shared_ptr<AST> simple = parseSimple();
 				procitaj(TZAREZ);
 				return simple;
@@ -341,7 +346,7 @@ namespace C0Compiler
 	{
 		try
 		{
-			std::shared_ptr<Tip> tip = std::dynamic_pointer_cast<Tip>(parseTip());
+			std::shared_ptr<Tip> tip = std::dynamic_pointer_cast<Tip>(parseType());
 			std::shared_ptr<Leaf> ime(new Leaf(procitaj(IDENTIFIER)));
 			if (sljedeci(ASSIGN))
 			{
@@ -354,20 +359,22 @@ namespace C0Compiler
 		}
 		catch(SintaksnaGreska const& e) 
 		{
-			// ako ovdje parseTip ne uspije, ne želimo da baci sintaksnu grešku, jer možda ovdje uopće
+			// ako ovdje parseType ne uspije, ne želimo da baci sintaksnu grešku, jer možda ovdje uopće
 			// ne treba biti tip. ako ne uspijemo parsirati tip, probamo expression
+			vrati();
 			return parseExpression();
 		}
 	}
 
 	std::shared_ptr<AST> Parser::parseExpression()
 	{
-		std::shared_ptr<AST> trenutni = parseLogicki();
+		std::shared_ptr<AST> trenutni = parseLogical();
 
 		while (true)
 		{
 			if (sljedeci(CONDQ))
 			{
+				procitaj(CONDQ);
 				int redak = trenutni->Redak();
 				int stupac = trenutni->Stupac();
 
@@ -378,13 +385,13 @@ namespace C0Compiler
 			}
 			else
 			{
-				vrati();
+				//vrati();
 				return trenutni;
 			}
 		}
 	}
 
-	std::shared_ptr<AST> Parser::parseLogicki()
+	std::shared_ptr<AST> Parser::parseLogical()
 	{
 		std::shared_ptr<AST> trenutni = parseBitwise();
 		while (true)
@@ -421,7 +428,7 @@ namespace C0Compiler
 				case BITOR:
 				{
 					std::shared_ptr<Leaf> operacija(new Leaf(*m_zadnji));
-					trenutni = std::shared_ptr<AST>(new BitovniOperator(operacija->Redak(), operacija->Stupac(), { trenutni, parseEquality(), operacija }));
+					trenutni = std::shared_ptr<AST>(new BinarniOperator(operacija->Redak(), operacija->Stupac(), { trenutni, parseEquality(), operacija }));
 					break;
 				}
 				default:
@@ -579,7 +586,7 @@ namespace C0Compiler
 				case BOREQ:
 				{
 					std::shared_ptr<Leaf> operacija(new Leaf(*m_zadnji));
-					trenutni = std::shared_ptr<AST>(new OperatorPridruzivanja(operacija->Redak(), operacija->Stupac(), { trenutni, parseAllocate(), operacija }));
+					trenutni = std::shared_ptr<AST>(new OperatorPridruzivanja(operacija->Redak(), operacija->Stupac(), { trenutni, parseExpression(), operacija }));
 					break;
 				}
 				default:
@@ -600,7 +607,7 @@ namespace C0Compiler
 		{
 			procitaj(ALLOC);
 			procitaj(OOTV);
-			std::shared_ptr<Tip> tip = std::dynamic_pointer_cast<Tip>(parseTip());
+			std::shared_ptr<Tip> tip = std::dynamic_pointer_cast<Tip>(parseType());
 			procitaj(OZATV);
 			trenutni = std::shared_ptr<AST>(new Alokacija(redak, stupac, { tip }));
 		}
@@ -609,38 +616,41 @@ namespace C0Compiler
 
 	std::shared_ptr<AST> Parser::parseAllocArray()
 	{
-		std::shared_ptr<AST> trenutni = parseStrelica();
-		int redak = trenutni->Redak();
-		int stupac = trenutni->Stupac();
+		std::shared_ptr<AST> trenutni;
 		if (sljedeci(ALLOCARRAY))
 		{
-			procitaj(ALLOCARRAY);
+			Token& temp = procitaj(ALLOCARRAY);
+			int redak = temp.Redak();
+			int stupac = temp.Stupac();
 			procitaj(OOTV);
-			std::shared_ptr<Tip> tip = std::dynamic_pointer_cast<Tip>(parseTip());
+			std::shared_ptr<Tip> tip = std::dynamic_pointer_cast<Tip>(parseType());
 			procitaj(ZAREZ);
 			std::shared_ptr<AST> koliko = parseExpression();
 			procitaj(OZATV);
 			trenutni = std::shared_ptr<AST>(new AlokacijaArray(redak, stupac, { tip, koliko }));
 		}
+		else
+			trenutni = parseArrow();
+
 		return trenutni;
 	}
 
-	std::shared_ptr<AST> Parser::parseStrelica()
+	std::shared_ptr<AST> Parser::parseArrow()
 	{
-		std::shared_ptr<AST> trenutni = parseTocka();
+		std::shared_ptr<AST> trenutni = parseDot();
 		while (true)
 		{
 			if (sljedeci(STRELICA))
 			{
 				procitaj(STRELICA);
-				trenutni = std::shared_ptr<AST>(new Strelica(m_zadnji->Redak(), m_zadnji->Stupac(), { trenutni, parseTocka() }));
+				trenutni = std::shared_ptr<AST>(new Strelica(m_zadnji->Redak(), m_zadnji->Stupac(), { trenutni, parseDot() }));
 			}
 			else
 				return trenutni;
 		}
 	}
 
-	std::shared_ptr<AST> Parser::parseTocka()
+	std::shared_ptr<AST> Parser::parseDot()
 	{
 		std::shared_ptr<AST> trenutni = parseUnary();
 		while (true)
@@ -648,7 +658,7 @@ namespace C0Compiler
 			if (sljedeci(TOCKA))
 			{
 				procitaj(TOCKA);
-				trenutni = std::shared_ptr<AST>(new Tocka(m_zadnji->Redak(), m_zadnji->Stupac(), { trenutni, parseUnary() }));
+				trenutni = std::shared_ptr<AST>(new Tocka(m_zadnji->Redak(), m_zadnji->Stupac(), { trenutni, parseBase() }));
 			}
 			else
 				return trenutni;
@@ -684,6 +694,8 @@ namespace C0Compiler
 				return std::shared_ptr<AST>(new Dereferenciranje(redak, stupac, { iza }));
 			}
 		}
+		// ako nismo pročitali nijedan unarni operator, trebamo vratiti glavu
+		vrati();
 		return parseBase();
 	}
 
@@ -727,15 +739,16 @@ namespace C0Compiler
 					case INCR:
 					case DECR:
 					{
-						std::shared_ptr<AST> trenutni = ime;
+						vrati();
+						std::shared_ptr<AST> trenutni = varijabla;
 						while (true)
 						{
 							citaj();
 							if (m_zadnji->Tip() == INCR)
-								trenutni = std::shared_ptr<AST>(new Inkrement(redak, stupac, { varijabla }));
+								trenutni = std::shared_ptr<AST>(new Inkrement(redak, stupac, { trenutni }));
 							
 							else if(m_zadnji->Tip() == DECR)
-								trenutni = std::shared_ptr<AST>(new Dekrement(redak, stupac, { varijabla }));
+								trenutni = std::shared_ptr<AST>(new Dekrement(redak, stupac, { trenutni }));
 
 							else
 							{
@@ -763,7 +776,7 @@ namespace C0Compiler
 
 			case DEKADSKI:
 			case HEKSADEKADSKI:
-				return std::shared_ptr<AST>(new BrojLiteral(*m_zadnji));
+				return std::shared_ptr<AST>(new IntLiteral(*m_zadnji));
 			case STRLIT:
 				return std::shared_ptr<AST>(new StringLiteral(*m_zadnji));
 			case CHRLIT:

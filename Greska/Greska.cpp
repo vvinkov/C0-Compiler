@@ -1,4 +1,5 @@
 ﻿#include "Greska.hpp"
+#include "llvm/Support/ErrorHandling.h"
 
 namespace C0Compiler
 {
@@ -11,6 +12,17 @@ namespace C0Compiler
 	Greska::Greska(std::string const& vrsta, int redak, int stupac, std::string const& opis) 
 		: poruka(vrsta + "! Redak: " + std::to_string(redak) +
 		", stupac: " + std::to_string(stupac) + ". Opis: " + opis + ".") {}
+
+	Greska::Greska(Greska const& druga) 
+	{ 
+		poruka.clear();
+		poruka.str(druga.poruka.str());
+	}
+
+	Greska::Greska(Greska&& druga)
+	{
+		poruka = std::move(druga.poruka);
+	}
 
 	// leksičke greške
 	LeksickaGreska::LeksickaGreska(int redak, int stupac, char dobio, char ocekujem) : Greska("Leksička greška", redak, stupac)
@@ -40,4 +52,9 @@ namespace C0Compiler
 		}
 	}
 
+	// iznimke
+	void Iznimka::Prijavi()
+	{
+		llvm::report_fatal_error(poruka.str().c_str());
+	}
 }

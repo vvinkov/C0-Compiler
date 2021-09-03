@@ -3,7 +3,7 @@
 
 namespace C0Compiler
 {
-	Lekser::Lekser(std::shared_ptr<std::ifstream> const& code)
+	Lekser::Lekser(std::shared_ptr<std::ifstream> code)
 	{
 		m_code = code;
 		m_redak = 0;
@@ -80,7 +80,7 @@ namespace C0Compiler
 		m_sadrzaj.clear();
 	}
 
-	int Lekser::kleeneZvijezda(std::function<bool(char)> && uvjet)
+	int Lekser::KleeneZvijezda(std::function<bool(char)> && uvjet)
 	{
 		char znak;
 		int procitani = 0;
@@ -165,7 +165,7 @@ namespace C0Compiler
 			{
 				// ako si pročitao slovo ili '_', onda si našao identifier
 				// svako sljedeće slovo ili broj pripada istom tom identifieru
-				kleeneZvijezda([](char znak){ return isalnum(znak) || znak == '_'; });
+				KleeneZvijezda([](char znak){ return isalnum(znak) || znak == '_'; });
 
 				// ovisno o tome što si pročitao, tokeniziraj
 				if (m_sadrzaj == "true" || m_sadrzaj == "false") tokeniziraj(BOOLEAN);
@@ -282,7 +282,7 @@ namespace C0Compiler
 						sljedeci = citaj();
 						if (isxdigit(sljedeci))
 						{
-							kleeneZvijezda(isxdigit);
+							KleeneZvijezda(isxdigit);
 							tokeniziraj(HEKSADEKADSKI);
 						}
 						else
@@ -303,7 +303,7 @@ namespace C0Compiler
 				else
 				{
 					// ako je znamenka, a nije nula, imaš broj u dekadskom zapisu
-					kleeneZvijezda(isdigit);
+					KleeneZvijezda(isdigit);
 					tokeniziraj(DEKADSKI);
 				}
 			}
@@ -380,7 +380,7 @@ namespace C0Compiler
 				else if (probajProcitati('/'))
 				{
 					// ako si pročitao "//", sve do kraja reda je komentar
-					kleeneZvijezda([](char znak) {return znak != '\n'; }); 
+					KleeneZvijezda([](char znak) {return znak != '\n'; }); 
 					procitaj('\n');
 					m_sadrzaj.clear(); // ignoriramo komentare
 				}

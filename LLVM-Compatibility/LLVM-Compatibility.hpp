@@ -15,36 +15,39 @@
 
 namespace C0Compiler
 {
-	class AST;
+	class Program;
 	namespace LLVMCompatibility
 	{
 		//static llvm::LLVMContext& AST::Context() { return  *llvm::unwrap(LLVMGetGlobalContext()); }
 
-		class Blok
+		class Block
 		{
 			private:
 				llvm::BasicBlock* m_sadrzaj;
-				Blok* m_roditelj;
-				std::map<std::string, llvm::AllocaInst*> m_varijable;
-				static Blok* trenutniBlok;	// pointer na zadnji otvoreni i nezatvoreni blok
+				Block* m_roditelj;
+				std::map<std::string, llvm::Value*> m_varijable;
+
+				static Block* trenutniBlok;	// pointer na zadnji otvoreni i nezatvoreni blok
 
 			public:
 				void Sadrzaj(llvm::BasicBlock* sadrzaj) { m_sadrzaj = sadrzaj; }
 				llvm::BasicBlock* Sadrzaj() { return m_sadrzaj; }
-				std::map<std::string, llvm::AllocaInst*>& Varijable() { return m_varijable; }
+				std::map<std::string, llvm::Value*>& Varijable() { return m_varijable; }
 
-				Blok* Roditelj() const { return m_roditelj; }
-				void Roditelj(Blok* roditelj) { m_roditelj = roditelj; }
-				llvm::AllocaInst* Trazi(std::string const& imeVarijable);
+				Block* Roditelj() const { return m_roditelj; }
+				void Roditelj(Block* roditelj) { m_roditelj = roditelj; }
+				llvm::Value* Trazi(std::string const& imeVarijable);
+				std::string const& Trazi(llvm::Value* varijabla);
+				llvm::Value* Dodaj(llvm::Value* varijabla, std::string const& ime);
 
-				static Blok* TrenutniBlok() { return trenutniBlok; }
-				static void TrenutniBlok(Blok* noviTrenutni) { trenutniBlok = noviTrenutni; }
+				static Block* TrenutniBlok() { return trenutniBlok; }
+				static void TrenutniBlok(Block* noviTrenutni) { trenutniBlok = noviTrenutni; }
 		};
 		
 		class Context
 		{
 			private:
-				std::deque<std::shared_ptr<Blok>> m_blokovi;
+				std::deque<std::shared_ptr<Block>> m_blokovi;
 				std::unique_ptr<llvm::LLVMContext> m_context;
 				std::unique_ptr<llvm::Module> m_modul;
 				std::unique_ptr<llvm::IRBuilder<>> m_irBuilder;
@@ -62,22 +65,22 @@ namespace C0Compiler
 				Context();
 				
 				void DodajBlok(llvm::BasicBlock* noviBlok);
-				void ZatvoriBlok() { Blok::TrenutniBlok(Blok::TrenutniBlok()->Roditelj()); }
-				void GenerirajKod(AST& korijenStabla);
+				void ZatvoriBlok() { Block::TrenutniBlok(Block::TrenutniBlok()->Roditelj()); }
+				void GenerirajKod(Program& korijenStabla);
 				void IzbrisiBlok() { m_blokovi.pop_back(); }
 				void DodajStrukturu(std::string const& imeStrukture);
-				void DodajElementStrukture(std::string const& imeStrukture, std::string const& imeElementa);
+				void DodajClanStrukture(std::string const& imeStrukture, std::string const& imeClana);
 				void DodajNoviTip(std::string const& imeTipa, llvm::Type* tip);
 				
-				int DohvatiIndeksElementaStrukture(std::string const& imeStrukture, std::string const& imeElementa) { return m_strukture[imeStrukture][imeElementa]; }
-
-				std::map<std::string, llvm::AllocaInst*> LokalneVarijable() { return m_blokovi.back()->Varijable(); }
+				int DohvatiIndeksClanaStrukture(std::string const& imeStrukture, std::string const& imeClana);
+				llvm::Value* DohvatiClanStrukture(llvm::Value* struktura, int indeksClana);
+				bool StrukturaDefinirana(std::string const& imeStrukture) { return m_strukture.find(imeStrukture) != m_strukture.end() && !m_strukture[imeStrukture].empty(); }
+				std::map<std::string, llvm::Value*>& LokalneVarijable() { return TrenutniBlok()->Varijable(); }
 				std::map<std::string, std::string>& AliasiTipova() { return m_aliasiTipova; }
-				Blok* TrenutniBlok() { return Blok::TrenutniBlok(); }
+				Block* TrenutniBlok() { return Block::TrenutniBlok(); }
 				std::unique_ptr<llvm::Module>& Module() { return m_modul; }
 				std::unique_ptr<llvm::IRBuilder<>>& Builder() { return m_irBuilder; }
 				std::unique_ptr<llvm::LLVMContext>& LLVMContext() { return m_context; }
-				//std::unique_ptr<std::map<llvm::Value*, std::string>>& TipoviPointera() { return m_tipoviPointera; }
 
 				// PrevediTip funkcije prevode tip iz stringa u LLVM tip i natrag u string
 				llvm::Type* PrevediTip(std::string const& tip);
